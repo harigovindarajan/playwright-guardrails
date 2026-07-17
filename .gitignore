@@ -1,0 +1,5 @@
+# Local working docs (brainstorms, plans) — not part of the shipped plugin
+docs/
+
+# Claude Code local settings (per-machine, never commit)
+.claude/

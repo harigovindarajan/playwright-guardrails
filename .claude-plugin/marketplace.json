@@ -1,0 +1,14 @@
+{
+  "name": "playwright-guardrails",
+  "owner": {
+    "name": "Hari"
+  },
+  "description": "Claude Code marketplace for the Playwright Guardrails plugin.",
+  "plugins": [
+    {
+      "name": "playwright-guardrails",
+      "source": "./",
+      "description": "Playwright migration guardrails: canonical rules, review checklist, rules-manifest skill, and probe/writer/reviewer sub-agents."
+    }
+  ]
+}
