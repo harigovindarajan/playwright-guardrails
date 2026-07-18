@@ -1,5 +1,8 @@
 # Playwright Guardrails
 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Version](https://img.shields.io/github/v/tag/harigovindarajan/playwright-guardrails?label=version)
+
 A Claude Code plugin that keeps AI-driven test migrations to Playwright on-spec.
 It bundles a canonical set of Playwright framework rules and an adversarial review
 checklist, and three single-role sub-agents — a probe, a writer, and a reviewer — that
@@ -24,6 +27,7 @@ what each existing test proves: its intent, the journey and steps, the data it n
 and the expected outcomes. You can migrate without one, but a contract makes the result
 markedly more reliable, so the best first step is to have an LLM draft a contract from
 the old test. The three agents then take that contract as their shared input. See
+[`examples/login-contract.md`](examples/login-contract.md) for a worked contract and
 [`DESIGN.md`](DESIGN.md) for why it's built this way.
 
 ## Agents
@@ -103,6 +107,26 @@ claude --plugin-dir .
 
 The three agents then appear in `/context` under Custom Agents. The rules skill
 is preload-only — the agents load it themselves, so it isn't invoked directly.
+
+## Quick start
+
+With the plugin installed and a contract drafted (see
+[`examples/login-contract.md`](examples/login-contract.md)), dispatch the agents from
+your Claude Code session in sequence:
+
+```text
+Use playwright-dom-probe on contracts/login-contract.md against
+https://staging.yourapp.example with auth/storageState.json, output to locator-maps/.
+
+Use playwright-test-writer on contracts/login-contract.md with
+locator-maps/login-locator-map.json, targeting the framework at tests/.
+
+Use playwright-test-reviewer on tests/login.spec.ts against
+contracts/login-contract.md.
+```
+
+Each agent's **Invocation Contract** section documents its full signature, including
+the optional inputs.
 
 ## Requirements
 

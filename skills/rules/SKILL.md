@@ -1,6 +1,6 @@
 ---
 name: rules
-description: Manifest of the canonical Playwright review sources. Names the two authoritative files — the framework rules and the review checklist — that the reviewer (and future writer) agent must read in full before reviewing or generating any Playwright test. Preload into those agents via their skills: field; not for direct human use.
+description: Manifest of the canonical Playwright review sources. Names the two authoritative files — the framework rules and the review checklist — that the probe, writer, and reviewer agents must read in full before reviewing or generating any Playwright test. Preload into those agents via their skills: field; not for direct human use.
 user-invocable: false
 ---
 

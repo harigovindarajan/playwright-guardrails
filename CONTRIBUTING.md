@@ -3,6 +3,11 @@
 Thanks for your interest in improving Playwright Guardrails. Most contributions are
 changes to the **canonical rules** — the heart of the plugin.
 
+For bug reports or larger changes (a new rule category, an agent behavior change),
+please [open an issue](https://github.com/harigovindarajan/playwright-guardrails/issues)
+first so the approach can be agreed before you invest in a PR. By contributing, you
+agree that your contributions are licensed under the [MIT license](LICENSE).
+
 ## The one thing to know
 
 The framework rules and the review checklist live in exactly one place —
@@ -24,6 +29,11 @@ reviewer all consume. There is no second copy to keep in sync. See
 
 Keep the rules thin and expressive: a rule should read as guidance a reviewer can
 apply, and the framework it produces should read as business journeys.
+
+To smoke-test a rule change, dispatch `playwright-test-reviewer` against a spec you
+know is compliant (with its contract) and confirm the change doesn't introduce
+spurious findings — and, for a new rule, that a spec violating it now produces the
+expected finding.
 
 ## Changing an agent
 

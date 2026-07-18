@@ -16,7 +16,8 @@ is repo hygiene plus documentation.
   and **`CONTRIBUTING.md`** — how to extend the canonical rules.
 - **Rewrote `README.md`** to the standard Claude Code plugin structure (per-agent
   Focus / When-to-use / Invocation, install steps, requirements), moving deep design
-  rationale into `DESIGN.md`.
+  rationale into `DESIGN.md` and dropping the 0.2.0 reuse-tier pipeline example and
+  "Operating cost" sections.
 - Version stays pre-1.0: the rule set is still evolving; `1.0.0` is reserved for
   after real external use.
 
