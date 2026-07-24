@@ -249,14 +249,35 @@ Write one JSON file per contract into the caller-supplied output directory. The 
   "contract": "path/to/contract.md",
   "testcase": "tc-002-login-user",
   "status": "completed",
+  "grounding_summary": {
+    "grounded": 26,
+    "grounded_this_run": 18,
+    "contract_note": 2,
+    "unobserved_states": []
+  },
   "entries": [ /* one Locator Map Shape entry per source locator or page-state target */ ]
 }
 ```
 
-The top-level `status` is written by the probe itself, aligned with the manifest, so artifact gates can check the persisted file directly without prompt-level patching:
+**`grounding_summary` is required.** It reports how much of this map was actually observed, so a caller can gate on coverage rather than inferring it from a status word:
 
-- `"completed"` — every source locator/page-state target for this contract was resolved (grounded or recorded as a deliberate `contract-note`).
-- `"partial"` — the probe could not attempt some targets for a non-static reason (e.g. an unreachable-but-non-infrastructure state left targets unprobed). Allowed enum: `completed` | `partial`.
+- `grounded` — entries with `grounding: "live-snapshot"`, any tier.
+- `grounded_this_run` — entries with `tier_source: "live"`, i.e. freshly driven in this run.
+- `contract_note` — entries with `grounding: "contract-note"`. `grounded + contract_note` equals `entries.length`.
+- `unobserved_states` — the page states where *every* entry is a `contract-note`. Empty when none.
+
+The two grounded counts differ on purpose. Tier 1 (page-object) and Tier 2 (cache) entries are emitted with `grounding: "live-snapshot"` **without driving this run**, so a map served entirely from cache would otherwise report full coverage and zero fallbacks. `grounded_this_run` is what distinguishes a freshly observed map from a replayed one; gate authors who care about live verification should read that number, not `grounded`.
+
+The top-level `status` is written by the probe itself so artifact gates can check the persisted file directly without prompt-level patching. Allowed enum: `completed` | `partial`. The distinction is **deliberate versus blocked**, not grounded versus not:
+
+- `"completed"` — every `contract-note` in the map is a *deliberate* fallback: a state reachable only through a destructive step the probe refuses to perform, or a gated state with no `storageState` supplied. The probe chose not to go there.
+- `"partial"` — at least one state was left ungrounded by a *blocked* cause: a journey step that errored, retry exhaustion, or a gated state that pass B could not reach. The probe tried and failed.
+
+Every `contract-note` entry's `fallback_reason` must therefore be classifiable as deliberate or blocked, because that classification is what resolves `status`.
+
+Callers gating on `status == "completed"` will now correctly fail runs that previously passed with silently unobserved states. That is the intended correction. A ratio over `grounding_summary` is the more precise gate.
+
+**Manifest propagation.** The manifest's own `status` enum is unchanged (`completed` | `FAILED`); it does not gain `partial`. Because the orchestrator reads the manifest rather than each persisted map, a `partial` map MUST also surface there: emit an `assumptions_and_risks` entry of type `state-unreachable` naming the unobserved states. Without it, a `partial` result is invisible to the caller.
 
 This persisted file is the addressable, replayable artifact the writer consumes. The same file reproduces the same writer output without re-driving the browser.
 
@@ -333,6 +354,26 @@ Use this schema:
   "type": "other",
   "detail": "No locator-cache/page-objects supplied; all locators live-driven",
   "reviewer_attention": "Supply these to reuse groundings across items"
+}
+```
+
+**Mandatory unobserved-state risk.** The manifest `status` stays `completed` even when a persisted map is `partial`, so a `partial` map would otherwise be invisible to an orchestrator that reads only the manifest. Whenever any map this run wrote is `partial`, you MUST emit a `state-unreachable` entry naming the affected states:
+
+```json
+{
+  "type": "state-unreachable",
+  "detail": "Locator map <testcase> is partial; states not observed: <state>, <state>",
+  "reviewer_attention": "Locators for these states are unverified contract fallbacks"
+}
+```
+
+**Mandatory second-session risk.** Whenever pass B ran (see Auth: two passes, one authenticated), emit an `auth` entry recording the extra session open, so the run's turn cost is auditable:
+
+```json
+{
+  "type": "auth",
+  "detail": "Authenticated pass B opened a second session to reach gated states",
+  "reviewer_attention": "Expected on gated contracts; absent on fully anonymous ones"
 }
 ```
 
