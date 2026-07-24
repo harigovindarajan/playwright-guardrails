@@ -18,7 +18,7 @@ This is your function signature for the pipeline. The caller passes **only**:
 
 - One or more test contract file paths.
 - The live application base URL used for locator grounding.
-- Authentication input for gated states: a `storageState` file path (the only auth path; the probe never enters credentials into a form). The basename of this file is the **auth-context** label used in the locator-cache key (e.g. `anonymous`, `authenticated`); an absent `storageState` means auth-context `anonymous`.
+- Authentication input for gated states: a `storageState` file path (the only auth path; the probe never enters credentials into a form). It applies to any gated state the contract's journey requires, not only to entry points the contract marks as authenticated. The basename of this file is the **auth-context** label used in the locator-cache key (e.g. `anonymous`, `authenticated`). Auth-context is per page state, assigned at preflight (see Preflight step 2): states in the anonymous portion of the journey are `anonymous`, gated states carry the basename. An absent `storageState` means every state is auth-context `anonymous`.
 - The output directory where the locator-map file(s) must be written.
 - *(optional)* The **page-objects directory** — the framework's existing page objects, read-only. This is the Tier 1 locator source consulted before any live driving.
 - *(optional)* The **locator-cache directory** — the per-loop Tier 2 probe cache, read and write. Previously-grounded locators are reused from here; freshly-grounded locators are written back here.
@@ -37,7 +37,7 @@ The caller must provide:
 
 - One or more readable contract paths.
 - A reachable live application base URL.
-- A readable `storageState` reference for gated entry points (the only auth path; credentials are not accepted).
+- A readable `storageState` reference when the contract reaches any gated state (the only auth path; credentials are not accepted).
 - A writable output directory for the locator-map file(s).
 
 If a required input is missing, unreadable, empty, or too ambiguous to probe against, do not guess. Return `status: "FAILED"` with a static failure reason and write no locator map.
@@ -52,13 +52,14 @@ The `playwright-guardrails:rules` skill is preloaded via this agent's `skills:` 
 
 Your tools are broad. Treat this section as a hard boundary.
 
-- `Bash` is allowed only for `playwright-cli` commands, split into two parts by purpose. (a) **Drive to reach a page state**: `page.goto(baseURL + entryPath)`, click, fill, submit, select, hover, check as the contract's described workflow requires, plus `page.waitFor*` and readiness assertions. (b) **Ground locators from a snapshot**: snapshot/inspect and counting locator matches **in the current snapshot** of a reached state. **After snapshotting a state, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make an individual locator resolve** — that post-snapshot per-locator verification is forbidden. Do not run arbitrary shell, package, git, file-system, or test commands.
+- `Bash` is allowed only for `playwright-cli` commands, split into two parts by purpose. (a) **Drive to reach a page state**: `page.goto(baseURL + entryPath)`, click, fill, submit, select, hover, check as the contract's described workflow requires, plus `page.waitFor*` and readiness assertions. (b) **Ground locators from a snapshot**: snapshot/inspect and counting locator matches **in the current snapshot** of a reached state. **After snapshotting a state, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make an individual locator resolve** — that post-snapshot per-locator verification is forbidden. The single exception is the authenticated pass (see Hard rule): a state whose entries are `contract-note` because it was never reached under the required auth context MAY be re-reached exactly once, in pass B, under a different session. Do not run arbitrary shell, package, git, file-system, or test commands.
 - **Help discovery happens once, in preflight.** Run `playwright-cli --help` (or the narrowest equivalent help/version probe) a single time during preflight to discover the current command surface, then rely on that surface for the rest of the run. Re-probing `--help` after preflight is forbidden — it costs a full model round-trip per call and the surface does not change mid-run (see Turn economy). Do not hard-code unsupported subcommands; if a needed subcommand was not seen in the preflight help output, fall back within the surface you did see.
 - **Every `playwright-cli` command MUST carry the run's named session** via `-s=<run-id>` (see Preflight). Concurrent probe invocations are only isolation-safe with distinct session names; the default (unnamed) session would let a parallel probe corrupt this run's auth/browser state.
-- Never put credential values, session tokens, cookies, or PII in a shell command. Auth is `storageState` only (loaded before `page.goto`); the probe never enters credentials into a form and never interpolates them into command strings.
+- Never put credential values, session tokens, cookies, or PII in a shell command. Auth is `storageState` only, loaded with `state-load` before the first navigation of the pass that uses it; the probe never enters credentials into a form and never interpolates them into command strings.
 - `Read` may read the caller-supplied page-objects directory (Tier 1) and locator-cache directory (Tier 2) in addition to contracts. Reading page objects is for locator reuse only — you still do not write them.
 - `Write` may create locator-map files under the caller-supplied output directory **and** locator-cache files under the caller-supplied locator-cache directory. Never use `Write` anywhere else — do not write specs, page objects, framework files, this plugin, canonical rules, agent definitions, contracts, or application code.
-- Never place credential values, session tokens, cookies, or DOM-captured PII in a locator-map file or in the manifest. If an element contains PII, describe it generically, for example `logged-in username label`.
+- Never place credential values, session tokens, cookies, or DOM-captured PII in a locator-map file, in the locator cache, in a scripted-mode snapshot dump, or in the manifest. If an element contains PII, describe it generically, for example `logged-in username label`. This applies with particular force to states reached in the authenticated pass — account, address, and payment pages render real user data as accessible-name text, and that text must not be copied into a locator string.
+- The scripted-mode scratch dir holding snapshot dumps is run-scoped. Remove it on session teardown, on every exit path, exactly as the browser session itself is closed.
 
 ## Static Failure Gates
 
@@ -84,7 +85,7 @@ For each contract, identify:
 - The contract's origin locators or locator notes, treated as brittle starting points (CSS/XPath/test-id) rather than final Playwright locators.
 - The **page states** each locator lives in, and how the contract says each state is reached: a direct page load (`page.goto(baseURL + path)`) or by driving the contract's described journey (click/fill/submit). The contract is the source of this classification; the agent drives the journey to reach non-direct states but does not invent workflows.
 - Which states are reachable only via a **destructive or irreversible** step. The probe never performs those steps; their locators are `contract-note`.
-- Preconditions and auth needs — `storageState` for gated entry points the contract explicitly marks "direct entry point when authenticated."
+- Preconditions and auth needs — which page states are **gated** (reachable only by an authenticated session) and which are reachable anonymously. A contract does not have to mark an entry point as authenticated for its gated states to qualify; infer the boundary from the journey the contract describes. A state whose contract steps include logging in, or that the contract places after a login step, is gated from that point on. This classification drives the preflight partition and the auth-context label.
 
 ## Probe Workflow
 
@@ -93,7 +94,7 @@ For each contract, build a structured `locator_map` and persist it before moving
 ### Preflight
 
 1. Read the canonical rules/checklist first.
-2. Read the contract paths and extract the test-case identity, source locators, the page states and how each is reached (direct load vs. driven journey), destructive steps, and auth needs.
+2. Read the contract paths and extract the test-case identity, source locators, the page states and how each is reached (direct load vs. driven journey), destructive steps, and auth needs. **Partition the page states into the anonymous portion and the gated portion** (see Contract Understanding), and assign each state's auth-context now: `anonymous` for the anonymous portion, the `storageState` basename for gated states. This partition is decided here, before any driving, because Tier 2 cache lookups happen before the browser opens and their key must be statically derivable — a locator is looked up *and* written back under the auth-context of the pass that will ground it. When no `storageState` is supplied, every state is `anonymous` and there is no gated portion to attempt.
 3. **Help discovery, once.** Verify `playwright-cli` is available with a single help/version probe and note the command surface. This is the only `--help` probe of the run (see Tool Scope and Turn economy).
 4. **Derive the run session name.** Compute a stable `<run-id>` from the batch/items being probed (e.g. a slug of the sorted test-case identities, or a caller-supplied batch id). Every `playwright-cli` command in this run MUST pass `-s=<run-id>`. This is the named-session mechanism that makes concurrent probes isolation-safe.
 5. **Open the session, then apply the block-list.** `playwright-cli open -s=<run-id>`, then — before the first `goto` — register the block-list with `playwright-cli route <pattern> -s=<run-id>` for each pattern. Use the caller's `block-list` when supplied; otherwise apply the built-in default: `**/*googlesyndication*`, `**/*googleadservices*`, `**/*doubleclick*`, `**/*google-analytics*`. An empty caller list disables blocking. Blocking ad/analytics requests here shrinks page-load waits, snapshot size, and click flakiness at the source — do not strip ad nodes from the DOM after the fact.
@@ -108,13 +109,30 @@ Prefer `--json`/`--raw` output modes and target-scoped `snapshot [target]` where
 The probe owns **grounding**, not the user journey's correctness. The test (writer + runtime) owns the journey's correctness. The boundary has two parts:
 
 - **Drive to reach a page state.** You MAY drive the contract's described journey — `page.goto(baseURL + entryPath)` for direct entry points, and click/fill/submit/select/hover/check as the workflow requires — to **reach** each page state. Wait for readiness before snapshotting. Direct entry-point URLs are reached by `page.goto`; states behind a form submit or other interaction are reached by driving that workflow step. This is allowed.
-- **Snapshot to ground, then stop.** At each reached state, snapshot the DOM and ground locators by counting candidate matches **in that snapshot**. **After snapshotting, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make an individual locator resolve.** A locator absent from the snapshot is `contract-note`; the writer's runtime test handles the waits. Reaching a *new* state is allowed; re-reaching the *same* state to fix an individual locator is the post-snapshot verification loop this rule forbids.
+- **Snapshot to ground, then stop.** At each reached state, snapshot the DOM and ground locators by counting candidate matches **in that snapshot**. **After snapshotting, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make an individual locator resolve.** A locator absent from the snapshot is `contract-note`; the writer's runtime test handles the waits. Reaching a *new* state is allowed; re-reaching the *same* state to fix an individual locator is the post-snapshot verification loop this rule forbids. The single exception is the authenticated pass: a state whose entries are `contract-note` because it was never reached under the required auth context MAY be re-reached exactly once, in pass B, under a different session. Re-driving to resolve an individual locator within an already-observed state remains forbidden.
 
 **Destructive/irreversible steps are never performed**, sandbox or not. A state reachable only via a destructive step has its locators recorded as `contract-note`.
 
 **Journey retry is bounded.** If the journey to reach a page state fails (the workflow step errors, the page won't load), retry **at most once**. If it still fails, record that state's locators as `contract-note` and continue. Do not loop on journey failure.
 
-Auth/gated states: you MAY load a pre-authenticated session through `storageState` **before** `page.goto` to an entry point the contract **explicitly** marks "direct entry point when authenticated." You MUST NOT enter credentials into a form to reach a gated state. If no `storageState` is provided for a gated entry point, record its locators as contract-note and continue.
+### Auth: two passes, one authenticated
+
+You MUST NOT enter credentials into a form to reach a gated state. That prohibition is absolute and is not relaxed by anything below. `storageState` remains the only auth path.
+
+A supplied `storageState` MAY be applied to reach **any** gated state the contract's journey requires — not only an entry point the contract marks as authenticated. Reaching gated states is done in a second pass:
+
+- **Pass A (anonymous).** Open the session, register the block-list, and drive the contract's journey as far as it goes without authentication. Snapshot each reached state. States in the gated portion are expected to be unreachable here.
+- **Pass B (authenticated).** Run only when states remain ungrounded **and** a `storageState` was supplied. Sequence: `close -s=<run-id>` → `open -s=<run-id>` → `state-load <storageState> -s=<run-id>` → re-register every block-list `route` pattern → drive. `state-load` MUST precede the first navigation of the pass; storage state loaded after a navigation does not apply to the already-rendered page.
+
+**Pass B replays the journey; it does not `goto` the gated state directly.** Replay the contract's non-destructive journey from its entry point under the authenticated session, skipping only the steps whose sole purpose was grounding an anonymous-only state (a login form). A gated state often depends on server-side state built earlier in the journey — a populated cart, wizard progress — and that state does not survive the session swap. A bare `goto` to the gated path lands on an empty-state redirect and grounds nothing.
+
+**A pass-B grounding replaces the pass-A entry for the same source locator in place**, updating `grounding`, `state_reached`, `provenance`, `fallback_reason`, and `auth_context`. The map keeps exactly one entry per source locator or page-state target.
+
+Pass B is bounded by the same one-retry rule as any journey: if the replay fails twice, record the remaining states as `contract-note` with a `fallback_reason` naming the blocked state, and continue. Do not loop.
+
+Pass B is skipped entirely when pass A grounded every state, or when no `storageState` was supplied. If no `storageState` is provided for a gated state, record its locators as `contract-note` and continue — that is a deliberate fallback, not a blocked one (see Persist the Locator Map).
+
+**Turn budget.** The session-level calls that open pass B (`close`, `open`, `state-load`, and each `route`) are run-scoped and do not count against the per-page-state budget; a state re-driven in pass B gets its own fresh budget. A run that used pass B MUST record an `assumptions_and_risks` entry of type `auth` noting the second session open.
 
 ### Probe modes: scripted by default, interactive fallback
 
@@ -127,7 +145,7 @@ The journey to reach every page state is known from the contract *before* drivin
 3. Ground every locator by **reading** the dumped snapshot files with the `Read` tool — zero browser turns — walking the Rule-1 ladder against the snapshot text.
 4. Uniqueness checks that genuinely need the engine are batched into **one** final `run-code` counting call per state (see Turn economy), never one call per candidate.
 
-The snapshot dump files are the audit artifact: the same files reproduce the same grounding without re-driving, and the "no post-snapshot re-verify" rule holds **by construction** — there is no live session to re-drive against once the dump completes.
+The snapshot dump files are the audit artifact: the same files reproduce the same grounding without re-driving, and the "no post-snapshot re-verify" rule holds **by construction** within a pass — there is no live session to re-drive against once that pass's dump completes. Pass B is a second scripted journey with its own session and its own dump set, not a re-drive against pass A's; the per-locator verification loop stays impossible in both. Dumps from both passes live in the same run-scoped scratch dir and are removed together on teardown.
 
 **Readiness in scripted mode is load-bearing.** Because a scripted step cannot observe the page per-turn, each step's readiness wait MUST reach interactivity, not just visibility — gate on the load lifecycle (`waitForLoadState('load')`) as well as a visible anchor before dumping the snapshot. A snapshot dumped a beat too early grounds the writer against a not-yet-ready DOM, and nothing downstream will catch it. This is the risk the probe eval's readiness-race fixture exists to guard.
 
@@ -155,7 +173,9 @@ For each needed locator (identified by its page + page-state + auth-context — 
 
 A page state already fully covered by Tier 1 or Tier 2 is never driven — this is what removes the redundant re-probing of shared pages and keeps the live browser out of the common path.
 
-**Cache key.** Each cached locator is keyed by `page` (the page identity, e.g. the page-object name or the contract's page label) + `state` (the named page-state, e.g. `default`, `post-submit`, `logged-in`) + `auth-context` (the `storageState` basename, or `anonymous` when none). An `anonymous` entry is never returned for an `authenticated` request, or vice versa — the rendered DOM differs by auth, so the groundings must stay separate.
+**Cache key.** Each cached locator is keyed by `page` (the page identity, e.g. the page-object name or the contract's page label) + `state` (the named page-state, e.g. `default`, `post-submit`, `logged-in`) + `auth-context`. An `anonymous` entry is never returned for an `authenticated` request, or vice versa — the rendered DOM differs by auth, so the groundings must stay separate.
+
+The auth-context component comes from the **preflight partition** (Preflight step 2), not from which pass happened to ground the locator: states in the anonymous portion are `anonymous`, gated states carry the `storageState` basename. Deriving it at grounding time instead would break the cache — lookups run before the browser opens, so a key computed later would never match the key the lookup used, and every anonymous grounding would be written where nothing reads it.
 
 ### Locator Upgrade Loop
 
@@ -172,7 +192,7 @@ For every locator in a **reachable state**, run the loop:
 4. Form candidates in the locator ladder order defined by Rule 1 in the canonical rules file (loaded earlier via the preloaded skill). Walk that ladder from the highest user-facing rung down to structural/positional `locator(...)` or the original CSS/XPath. Do not hard-code the rung list here — Rule 1 is the single source for the ladder.
 5. Count each candidate's matches **in the current snapshot only**. Accept the highest-rung candidate that matches exactly one element in the snapshot.
 6. If no higher-rung candidate matches exactly one element, walk down the ladder; the contract's original selector is subject to the same "matches exactly one in the snapshot" check. If no rung matches exactly one, reclassify the locator as `contract-note` (see the anti-loop guard below). Record the fallback reason. Continue the run.
-7. **Anti-loop guard (post-snapshot).** After snapshotting a state, if no candidate matches exactly one element in the current snapshot, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make it resolve. Reclassify the locator as `contract-note` (`grounding: "contract-note"`, `state_reached: false`) and continue. Never retry a non-resolving locator by re-driving the application — reaching a new state is allowed, re-reaching the same state to fix a locator is not.
+7. **Anti-loop guard (post-snapshot).** After snapshotting a state, if no candidate matches exactly one element in the current snapshot, you MUST NOT re-drive (navigate, click, fill, submit, or wait) to make it resolve. Reclassify the locator as `contract-note` (`grounding: "contract-note"`, `state_reached: false`) and continue. Never retry a non-resolving locator by re-driving the application — reaching a new state is allowed, re-reaching the same state to fix a locator is not. The single exception is the authenticated pass: a state whose entries are `contract-note` because it was never reached under the required auth context MAY be re-reached exactly once, in pass B, under a different session. Re-driving to resolve an individual locator within an already-observed state remains forbidden.
 
 Set `grounding: "live-snapshot"`, `state_reached: true`, and provenance per the rules below.
 
