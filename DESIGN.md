@@ -66,6 +66,16 @@ Two design choices make this work:
 The reviewer sees **only** the spec and contract — never the locator map — so its
 verdict stays unbiased by how the probe resolved a locator.
 
+That isolation has a price, and it is worth naming. Because the reviewer never sees the
+map, it cannot tell you that a spec asserts against a page state nothing ever observed.
+The probe reports coverage instead: every persisted map carries a `grounding_summary`
+distinguishing locators grounded from a live snapshot, locators grounded fresh *this
+run*, and locators carried over as unverified contract fallbacks — plus the page states
+where nothing was observed at all. A caller can gate on that ratio. Whether the reviewer
+should receive a counts-only summary — enough to flag an unobserved page, not enough to
+ratify the writer's locator choices — is an open question tracked in
+[#3](https://github.com/harigovindarajan/playwright-guardrails/issues/3).
+
 ## Mechanical vs. reasoning roles
 
 The probe and writer are **mechanical**: the probe extracts (drive → snapshot →

@@ -3,6 +3,44 @@
 All notable changes to the **playwright-guardrails** plugin are documented here.
 This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [0.4.0] — 2026-07-25
+
+Probe auth coverage and grounding-coverage reporting. Closes
+[#1](https://github.com/harigovindarajan/playwright-guardrails/issues/1) and
+[#2](https://github.com/harigovindarajan/playwright-guardrails/issues/2).
+
+- **The probe now reaches gated states on a driven journey.** Previously
+  `storageState` applied only at entry points a contract explicitly marked as
+  authenticated, and the probe is (correctly) forbidden from typing credentials —
+  so a contract describing a journey into a gated area authenticated at neither
+  point and recorded every gated locator as an unverified fallback. The probe now
+  drives the anonymous portion, then reopens with `state-load` and **replays** the
+  journey under auth. It replays rather than navigating straight to the gated path
+  because server-side journey state (a populated cart, wizard progress) does not
+  survive the session swap.
+- **Auth-context is assigned at preflight**, not at grounding time, so Tier 2 cache
+  lookups — which run before the browser opens — key consistently with writebacks.
+- **The persisted locator map now carries a required `grounding_summary`** with
+  `grounded`, `grounded_this_run`, `contract_note`, and `unobserved_states`. The two
+  grounded counts differ deliberately: Tier 1 and Tier 2 entries are `live-snapshot`
+  without driving, so a fully cache-served map would otherwise report complete
+  coverage.
+- **Map `status` now distinguishes deliberate from blocked.** `completed` means every
+  `contract-note` was a refusal (a destructive step, or a gated state with no
+  `storageState`); `partial` means a state was blocked by a journey error, retry
+  exhaustion, or an unreachable gated state.
+- **Manifest surfaces partial maps** via a mandatory `state-unreachable` risk entry,
+  since the orchestrator reads the manifest rather than each map. A pass-B run also
+  records an `auth` risk entry noting the second session open.
+- **PII hygiene extended to scripted-mode snapshot dumps**, which now contain
+  authenticated account and payment DOM for the first time, and the scratch dir is
+  removed on teardown.
+
+> **Upgrade note.** The `status` change is intentionally stricter: a caller gating on
+> `status == "completed"` will now fail runs that previously passed while leaving
+> states silently unobserved. That is the defect being corrected. Gate on a ratio over
+> `grounding_summary` for a more precise check.
+
 ## [0.3.0] — 2026-07-18
 
 Public-release preparation. No change to agent or skill runtime behavior — this
