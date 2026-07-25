@@ -83,7 +83,7 @@ If a contract's intent or steps are too ambiguous to generate a business-journey
 
 ## Locator Map Input
 
-Each contract arrives with a locator-map file from `playwright-dom-probe`. Read it and treat it as the authoritative old→new locator mapping for that contract. Each entry carries the source selector, the chosen Playwright locator and its ladder rung, `resolves_to_one`, `provenance` (`contract-hint-confirmed` | `derived-fresh` | `fell-back-with-reason`), and a `fallback_reason` when the probe fell back.
+Each contract arrives with a locator-map file from `playwright-dom-probe`. Read it and treat it as the authoritative old→new locator mapping for that contract. Each entry carries the source selector, the chosen Playwright locator and its ladder rung, `resolves_to_one`, `grounding`, `provenance`, and a `fallback_reason` when the probe fell back. The **Locator Map Shape** section in `agents/playwright-dom-probe.md` is the single source for the entry shape and its allowed values — do not restate them here.
 
 Use each locator exactly as the probe resolved it; do not re-derive, second-guess, or "upgrade" it — the probe already validated it against the live DOM. When an entry is a fallback or a low rung, carry it through and surface it in `assumptions_and_risks` for the reviewer.
 

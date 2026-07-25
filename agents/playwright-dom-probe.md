@@ -399,7 +399,7 @@ Allowed enum values:
 - each persisted locator-map file's top-level `status`: `completed` or `partial` (see Persist the Locator Map)
 - `tier_stats`: an object with integer counts for keys `page-object`, `cache`, and `live` (present in every `completed` manifest; omitted from a `FAILED` manifest)
 - `failure.type`: `missing-rules`, `missing-contract`, `ambiguous-contract`, `missing-playwright-cli`, `unreachable-app`, or `missing-output-dir`
-- inside each locator-map file's entries: `source.source_type` is `xpath`, `css`, `testid`, `contract-note`, or `inferred`; `replacement.rung` is `role`, `label`, `placeholder`, `text`, `alt`, `testid`, `structural`, or `original`; `grounding` is `live-snapshot` or `contract-note`; `tier_source` is `page-object`, `cache`, or `live`; `provenance` is `contract-hint-confirmed`, `derived-fresh`, `fell-back-with-reason`, or `contract-note`.
+- inside each locator-map file's entries: `source.source_type`, `replacement.rung`, `grounding`, `tier_source`, and `provenance` take the values defined in Locator Map Shape — the single source for entry-level enums. Do not restate them here.
 
 Empty-state rules:
 

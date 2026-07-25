@@ -44,6 +44,14 @@ the writer never verdicts, the reviewer never edits). Per-role reasoning `effort
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
+The **locator map** — the artifact the probe produces and the writer consumes — is
+defined in exactly one place: the **Locator Map Shape** section of
+[`agents/playwright-dom-probe.md`](agents/playwright-dom-probe.md). The writer
+**references** that section rather than restating field names or enum values, the same
+way the checklist references rule numbers. When you change the map's shape, change it
+there and check that the writer still reads the fields it needs — don't add a second
+copy to keep in sync.
+
 ## Before you open a PR
 
 1. **Validate the plugin:**
