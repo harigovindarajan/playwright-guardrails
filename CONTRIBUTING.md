@@ -10,10 +10,18 @@ agree that your contributions are licensed under the [MIT license](LICENSE).
 
 ## The one thing to know
 
-The framework rules and the review checklist live in exactly one place —
-[`skills/rules/`](skills/rules/) — and are the single source the probe, writer, and
-reviewer all consume. There is no second copy to keep in sync. See
-[`DESIGN.md`](DESIGN.md) for why the architecture is shaped this way.
+Anything two or more agents share lives in [`skills/`](skills/) — never inside one of the
+agents. There is no second copy to keep in sync.
+
+- [`skills/rules/`](skills/rules/) — the framework rules and the review checklist. The
+  probe, writer, and reviewer all consume them.
+- [`skills/locator-map/`](skills/locator-map/) — the shape of the locator map. The probe
+  writes maps in it, the writer reads them against it. The reviewer does **not** preload
+  it and must not: it stays blind to the map by design.
+
+Agents pick these up through their frontmatter `skills:` field, which injects the skill's
+content at startup — so a shared source is never passed in as a path and never copied into
+an agent. See [`DESIGN.md`](DESIGN.md) for why the architecture is shaped this way.
 
 ## Extending the rules
 
@@ -44,6 +52,12 @@ the writer never verdicts, the reviewer never edits). Per-role reasoning `effort
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
+Don't restate a shared source inside an agent — not field names, not enum values, not rule
+text. An agent describes how it *produces* or *consumes* the artifact; the skill describes
+what the artifact *is*. When you change the locator map's shape, change
+[`skills/locator-map/SKILL.md`](skills/locator-map/SKILL.md) and check that both the probe
+and the writer still hold up against it.
+
 ## Before you open a PR
 
 1. **Validate the plugin:**
@@ -54,9 +68,10 @@ clear rationale.
    ```bash
    claude --plugin-dir .
    ```
-   Check that the three agents appear in `/context` under Custom Agents. The
-   `rules` skill is preload-only (`user-invocable: false`) — the agents load it
-   themselves, so it won't show in the slash-command menu.
+   Check that the three agents appear in `/context` under Custom Agents. Both skills —
+   `rules` and `locator-map` — are preload-only (`user-invocable: false`), so neither
+   shows in the slash-command menu. Confirm the probe and the writer list both in their
+   `skills:` frontmatter and that the reviewer lists only `rules`.
 3. Use clear, conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`) and
    open the PR against `main`.
 

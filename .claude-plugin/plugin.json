@@ -1,7 +1,7 @@
 {
   "name": "playwright-guardrails",
   "version": "0.4.0",
-  "description": "Playwright migration guardrails: canonical Playwright framework rules and review checklist, a preloadable rules-manifest skill, and probe/writer/reviewer sub-agents that load the rules into their own context — a live-DOM locator probe, a deterministic spec writer, and a reviewer — to keep test migrations to Playwright, from any source framework, consistent and checkable.",
+  "description": "Playwright migration guardrails: canonical Playwright framework rules and review checklist, two preloadable skills — the rules manifest and the locator-map shape — and probe/writer/reviewer sub-agents that load those sources into their own context — a live-DOM locator probe, a deterministic spec writer, and a reviewer — to keep test migrations to Playwright, from any source framework, consistent and checkable.",
   "author": {
     "name": "Hari"
   },
