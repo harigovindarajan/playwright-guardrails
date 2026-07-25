@@ -5,9 +5,10 @@ This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PA
 
 ## [0.4.0] — 2026-07-25
 
-Probe auth coverage and grounding-coverage reporting. Closes
-[#1](https://github.com/harigovindarajan/playwright-guardrails/issues/1) and
-[#2](https://github.com/harigovindarajan/playwright-guardrails/issues/2).
+Probe auth coverage, grounding-coverage reporting, and a shared locator-map skill.
+Closes [#1](https://github.com/harigovindarajan/playwright-guardrails/issues/1),
+[#2](https://github.com/harigovindarajan/playwright-guardrails/issues/2), and
+[#5](https://github.com/harigovindarajan/playwright-guardrails/issues/5).
 
 - **The probe now reaches gated states on a driven journey.** Previously
   `storageState` applied only at entry points a contract explicitly marked as
@@ -35,6 +36,16 @@ Probe auth coverage and grounding-coverage reporting. Closes
 - **PII hygiene extended to scripted-mode snapshot dumps**, which now contain
   authenticated account and payment DOM for the first time, and the scratch dir is
   removed on teardown.
+- **The locator-map shape now lives once, in `skills/locator-map/`.** The map is the
+  interface between the probe (which writes it) and the writer (which reads it), and
+  its shape had been written down three times — the writer's copy documenting three
+  provenance values where the probe emits four, `contract-note` having been missing
+  since the initial public commit. Both agents now preload the skill through their
+  `skills:` field, the same mechanism `skills/rules/` already uses, and neither
+  restates the shape. Each gains a static failure gate for an absent shape plus a
+  `missing-locator-map-shape` failure type. The reviewer deliberately does not
+  preload it, which makes its blindness to the map a declared decision rather than
+  an omission.
 
 > **Upgrade note.** The `status` change is intentionally stricter: a caller gating on
 > `status == "completed"` will now fail runs that previously passed while leaving
