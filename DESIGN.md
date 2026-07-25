@@ -16,7 +16,7 @@ The fix is not a smarter prompt. It is **specialized single-role agents with fix
 inputs and one canonical rule set**, so rule adherence is checkable rather than
 implicit and an agent can't prose its way around a violation.
 
-## One canonical rule set, loaded by preload
+## Canonical sources, loaded by preload
 
 The framework rules and the review checklist live in exactly one place —
 [`skills/rules/`](skills/rules/) — and are the single source the probe, writer, and
@@ -33,6 +33,16 @@ against a partial rule set.
 This keeps rules out of the orchestrator's context, removes the path-guessing that
 once let reviews silently pass with no rules loaded, and avoids needing the `Skill`
 tool — the agent loads rules with `Read` alone.
+
+The same mechanism carries the **locator map's shape**. The map is the interface between the
+probe (which writes it) and the writer (which reads it), so its definition lives in
+[`skills/locator-map/`](skills/locator-map/) rather than inside either agent — both preload
+it, and neither restates it. Keeping it in the producer's file was the obvious shortcut and
+the wrong one: it would make the writer subordinate to a sibling it never calls, and the
+reference would not be real, because an agent has no path to a sibling's definition — only to
+the skills it preloads. Unlike the rules manifest, this skill carries its content inline, so
+there is no file to read and no second load step. The reviewer does **not** preload it, which
+is what turns its blindness to the map into a declared decision rather than an omission.
 
 ## Three roles, kept as siblings
 

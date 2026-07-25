@@ -10,10 +10,18 @@ agree that your contributions are licensed under the [MIT license](LICENSE).
 
 ## The one thing to know
 
-The framework rules and the review checklist live in exactly one place —
-[`skills/rules/`](skills/rules/) — and are the single source the probe, writer, and
-reviewer all consume. There is no second copy to keep in sync. See
-[`DESIGN.md`](DESIGN.md) for why the architecture is shaped this way.
+Anything two or more agents share lives in [`skills/`](skills/) — never inside one of the
+agents. There is no second copy to keep in sync.
+
+- [`skills/rules/`](skills/rules/) — the framework rules and the review checklist. The
+  probe, writer, and reviewer all consume them.
+- [`skills/locator-map/`](skills/locator-map/) — the shape of the locator map. The probe
+  writes maps in it, the writer reads them against it. The reviewer does **not** preload
+  it and must not: it stays blind to the map by design.
+
+Agents pick these up through their frontmatter `skills:` field, which injects the skill's
+content at startup — so a shared source is never passed in as a path and never copied into
+an agent. See [`DESIGN.md`](DESIGN.md) for why the architecture is shaped this way.
 
 ## Extending the rules
 
@@ -44,13 +52,11 @@ the writer never verdicts, the reviewer never edits). Per-role reasoning `effort
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
-The **locator map** — the artifact the probe produces and the writer consumes — is
-defined in exactly one place: the **Locator Map Shape** section of
-[`agents/playwright-dom-probe.md`](agents/playwright-dom-probe.md). The writer
-**references** that section rather than restating field names or enum values, the same
-way the checklist references rule numbers. When you change the map's shape, change it
-there and check that the writer still reads the fields it needs — don't add a second
-copy to keep in sync.
+Don't restate a shared source inside an agent — not field names, not enum values, not rule
+text. An agent describes how it *produces* or *consumes* the artifact; the skill describes
+what the artifact *is*. When you change the locator map's shape, change
+[`skills/locator-map/SKILL.md`](skills/locator-map/SKILL.md) and check that both the probe
+and the writer still hold up against it.
 
 ## Before you open a PR
 
