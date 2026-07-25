@@ -214,9 +214,8 @@ skill. That skill is the single source: write entries in exactly that shape, and
 restate its field names or enum values here. If its content did not load, stop and return a
 blocking failure rather than writing a map against a remembered shape.
 
-Emit one entry per source locator or contract page-state target. `page`, `state`, and
-`auth_context` are the Tier 2 cache key (see Cache key) — they are required whenever the cache
-is in use so an entry is addressable.
+Emit one entry per source locator or contract page-state target. Cache key below governs how
+you populate the cache-key fields.
 
 Do not include credential values, session tokens, cookies, full names, email addresses copied from the live DOM, or other PII in locator-map entries. If an element contains PII, describe it generically, for example `logged-in username label`, and leave the actual value for the writer to source from data modules.
 
@@ -363,7 +362,7 @@ Allowed enum values:
 - manifest `status`: `completed` or `FAILED`
 - each persisted locator-map file's top-level `status`: `completed` or `partial` (see Persist the Locator Map)
 - `tier_stats`: an object with integer counts for keys `page-object`, `cache`, and `live` (present in every `completed` manifest; omitted from a `FAILED` manifest)
-- `failure.type`: `missing-rules`, `missing-contract`, `ambiguous-contract`, `missing-playwright-cli`, `unreachable-app`, or `missing-output-dir`
+- `failure.type`: `missing-rules`, `missing-locator-map-shape`, `missing-contract`, `ambiguous-contract`, `missing-playwright-cli`, `unreachable-app`, or `missing-output-dir`
 - inside each locator-map file's entries: `source.source_type`, `replacement.rung`, `grounding`, `tier_source`, and `provenance` take the values defined in the preloaded `playwright-guardrails:locator-map` skill — the single source for entry-level enums. Do not restate them here.
 
 Empty-state rules:

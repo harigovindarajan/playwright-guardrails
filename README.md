@@ -105,8 +105,8 @@ For local development, load it directly without installing:
 claude --plugin-dir .
 ```
 
-The three agents then appear in `/context` under Custom Agents. The rules skill
-is preload-only — the agents load it themselves, so it isn't invoked directly.
+The three agents then appear in `/context` under Custom Agents. Both skills — the rules
+manifest and the locator-map shape — are preload-only, so neither is invoked directly.
 
 ## Quick start
 

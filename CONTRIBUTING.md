@@ -68,9 +68,10 @@ and the writer still hold up against it.
    ```bash
    claude --plugin-dir .
    ```
-   Check that the three agents appear in `/context` under Custom Agents. The
-   `rules` skill is preload-only (`user-invocable: false`) — the agents load it
-   themselves, so it won't show in the slash-command menu.
+   Check that the three agents appear in `/context` under Custom Agents. Both skills —
+   `rules` and `locator-map` — are preload-only (`user-invocable: false`), so neither
+   shows in the slash-command menu. Confirm the probe and the writer list both in their
+   `skills:` frontmatter and that the reviewer lists only `rules`.
 3. Use clear, conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`) and
    open the PR against `main`.
 

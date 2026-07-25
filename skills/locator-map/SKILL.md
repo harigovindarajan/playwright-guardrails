@@ -83,7 +83,8 @@ field values:
   after one retry, a gated `storageState` was unavailable, or no candidate matched exactly
   one element in the snapshot. `resolves_to_one: false` and `state_reached: false` are
   mandatory, and `replacement.locator` is the contract's proposed locator verbatim,
-  unverified. The writer emits it verbatim and the runtime test exercises it.
+  unverified. How the writer handles an unverified locator is the writer's rule, not this
+  document's.
 
 `tier_source` records how *this run* resolved the locator: `page-object` (reused from
 Tier 1), `cache` (reused from Tier 2), or `live` (freshly driven this run). It is auditing
@@ -97,5 +98,7 @@ cache is in use so an entry is addressable.
 - **Treat this shape as authoritative.** Do not restate these field names or enum values in
   an agent definition, and do not accept a locally remembered variant over what is written
   here.
-- **If this skill's content is missing or empty, STOP and return a blocking failure** naming
-  it. Do not write or read a locator map against a partial, remembered, or assumed shape.
+- **Never fall back to a remembered shape.** If what you recall disagrees with this document,
+  this document wins. The case where this content is absent entirely is caught by the static
+  failure gates in the probe and the writer, not here — a guard cannot live inside the content
+  whose absence it guards.

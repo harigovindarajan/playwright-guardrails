@@ -181,7 +181,7 @@ For static failures, return this shape and generate nothing:
 {
   "status": "FAILED",
   "failure": {
-    "type": "missing-rules | missing-contract | ambiguous-contract | missing-locator-map | missing-framework-root",
+    "type": "missing-rules | missing-locator-map-shape | missing-contract | ambiguous-contract | missing-locator-map | missing-framework-root",
     "message": "Concise static failure reason naming the missing or invalid input."
   },
   "contracts": ["path/to/contract.md"],
