@@ -90,7 +90,7 @@ field values:
   mandatory, and `replacement.locator` is the contract's proposed locator verbatim,
   unverified. How the writer handles an unverified locator is the writer's rule, not this
   document's.
-- `"translated"` — the locator was converted from the source suite's selector without any
+- `"translated"`: the locator was converted from the source suite's selector without any
   browser, in translate mode. It was never checked against a page: the source suite's history
   is the only evidence it works. `resolves_to_one: false` and `state_reached: false` are
   mandatory, `tier_source` is `"translation"`, `provenance` is `"translated"`, and

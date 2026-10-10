@@ -43,9 +43,9 @@ You may use `Glob` and `Grep` to verify the supplied paths and to locate the Pla
 
 Three skills are preloaded via this agent's `skills:` field.
 
-- `playwright-guardrails:rules` — follow its mandate to read both named files before translating. Rule 1 (prefer user-facing locators) and Rule 2 (test IDs as the fallback) name the rungs you record. Rule 28 (mark carried-over locators) is how the writer will carry what you produce.
-- `playwright-guardrails:locator-map` — the single source for the shape of the map you write, including the `translated` grounding value and its pinned field values. Its content is injected directly; there is no file to read. Do not restate the shape here.
-- `playwright-guardrails:contract` — the single source for the contract's shape, including the origin-locators table you translate from and how to read a contract written by hand. Do not restate it here.
+- `playwright-guardrails:rules`: follow its mandate to read both named files before translating. Rule 1 (prefer user-facing locators) and Rule 2 (test IDs as the fallback) name the rungs you record. Rule 28 (mark carried-over locators) is how the writer will carry what you produce.
+- `playwright-guardrails:locator-map` is the single source for the shape of the map you write, including the `translated` grounding value and its pinned field values. Its content is injected directly; there is no file to read. Do not restate the shape here.
+- `playwright-guardrails:contract` is the single source for the contract's shape, including the origin-locators table you translate from and how to read a contract written by hand. Do not restate it here.
 
 ## Tool Scope and Secret Handling
 
@@ -74,8 +74,8 @@ A framework with no Playwright config is not a failure: translate with Playwrigh
 
 For each origin locator, in order:
 
-1. **Tier 1 — page objects.** If the page-objects directory was supplied and the page object for this element's page already defines a locator for it, reuse that locator with `grounding: "live-snapshot"` and `tier_source: "page-object"`, as the probe does for a Tier 1 hit.
-2. **Tier 2 — locator cache.** If the locator-cache directory was supplied and holds a grounded entry for this page, state, auth-context, and element, reuse it with `grounding: "live-snapshot"` and `tier_source: "cache"`, as the probe does for a Tier 2 hit.
+1. **Tier 1: page objects.** If the page-objects directory was supplied and the page object for this element's page already defines a locator for it, reuse that locator with `grounding: "live-snapshot"` and `tier_source: "page-object"`, as the probe does for a Tier 1 hit.
+2. **Tier 2: locator cache.** If the locator-cache directory was supplied and holds a grounded entry for this page, state, auth-context, and element, reuse it with `grounding: "live-snapshot"` and `tier_source: "cache"`, as the probe does for a Tier 2 hit.
 3. **Translate** only on a miss in both.
 
 A reused locator was grounded by a probe, so it is not a translated entry and the writer will not mark it.

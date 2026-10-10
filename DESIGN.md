@@ -62,9 +62,9 @@ sections by meaning; only a contract with no findable intent, steps, or outcomes
 unresolved `blocking` open question, is too ambiguous to use. That keeps existing contracts
 working while giving drafted ones a single shape.
 
-## Six roles, kept as siblings
+## Seven roles, kept as siblings
 
-The pipeline is six independent single-role sub-agents. **None of them calls another.** An
+The pipeline is seven independent single-role sub-agents. **None of them calls another.** An
 orchestrator runs them in sequence: your own session, a migration pipeline, or the bundled
 [`migrate`](skills/migrate/SKILL.md) skill (see The reference orchestrator).
 
@@ -73,7 +73,9 @@ orchestrator runs them in sequence: your own session, a migration pipeline, or t
 2. [`playwright-contract-drafter`](agents/playwright-contract-drafter.md): source tests +
    helpers → one contract file per test case.
 3. [`playwright-dom-probe`](agents/playwright-dom-probe.md): contract + live app → a
-   persisted `locator_map` file per test case.
+   persisted `locator_map` file per test case. In translate mode,
+   [`playwright-locator-translator`](agents/playwright-locator-translator.md) takes this
+   slot instead: contract + framework config → the same map shape, unverified.
 4. [`playwright-test-writer`](agents/playwright-test-writer.md): contract + `locator_map` +
    framework → spec and supporting files.
 5. [`playwright-test-reviewer`](agents/playwright-test-reviewer.md): spec + contract →
@@ -269,8 +271,9 @@ dependencies, config files, CI jobs, and the source tests themselves is left to 
 
 ## Mechanical vs. reasoning roles
 
-The probe and runner are mostly **mechanical**: the probe extracts (drive → snapshot →
-ground), and the runner runs a command and reads its report. Running them at high reasoning
+The probe, translator, and runner are mostly **mechanical**: the probe extracts (drive →
+snapshot → ground), the translator converts a selector to its equivalent, and the runner
+runs a command and reads its report. Running them at high reasoning
 effort buys little and dominates wall-clock. The other four carry the migration's quality and
 run at `high`. The drafter reads what each existing test intends, and every later stage
 inherits that reading, so a shallow contract costs more than the extra reasoning does. The

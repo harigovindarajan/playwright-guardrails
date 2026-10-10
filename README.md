@@ -5,9 +5,9 @@
 
 A Claude Code plugin that keeps AI-driven test migrations to Playwright on-spec.
 It bundles a canonical set of Playwright framework rules and an adversarial review
-checklist, canonical shapes for the test contract and the locator map, and six single-role
-sub-agents (a planner, a contract drafter, a probe, a writer, a reviewer, and a runner) that
-load those same sources, so planning, locator grounding, generation, review, and runtime
+checklist, canonical shapes for the test contract and the locator map, and seven single-role
+sub-agents (a planner, a contract drafter, a probe or a locator translator, a writer, a
+reviewer, and a runner) that load those same sources, so planning, locator grounding, generation, review, and runtime
 verification run against one authoritative source instead of improvising. A `/migrate` skill
 drives them in order.
 
@@ -80,6 +80,23 @@ reuse and block-list inputs). Its **Invocation Contract** section in
 signature. Requires `playwright-cli` on `PATH` — it is the only agent that drives a
 browser.
 
+### `playwright-locator-translator`
+
+**Focus:** The browser-free alternative to the probe. It converts a contract's origin
+locators straight into the Playwright locators that select the same thing (a test-id
+attribute to `getByTestId`, a link-text lookup to a link role), reading the target config's
+`testIdAttribute`, and writes them into the same locator-map shape marked `translated`. It
+never infers a role or name the source selector doesn't state.
+
+**When to use:** Instead of the probe, when the source suite's locators are trusted and you
+want every test migrated and running before spending time on live grounding. The writer
+marks each translated locator `// carried: <source selector>` (Rule 28), and the test run is
+what proves it.
+
+**Invocation:** Dispatched with contract path(s), the framework root, and an output
+directory, plus optional reuse inputs. See the **Invocation Contract** in
+[`agents/playwright-locator-translator.md`](agents/playwright-locator-translator.md).
+
 ### `playwright-test-writer`
 
 **Focus:** Generates the Playwright spec and supporting framework files from a contract
@@ -134,13 +151,15 @@ See the **Invocation Contract** in
 
 ## The pipeline
 
-The six agents are independent siblings: **none calls another**. An orchestrator (the
+The seven agents are independent siblings: **none calls another**. An orchestrator (the
 `/migrate` skill, your own session, or a migration pipeline) runs them in sequence:
 
 ```text
 planner  source suite                    → plan: inventory, risks, order
 drafter  source test + helpers           → contract file(s)
 probe    contract + live app             → locator_map file(s)
+  or translator (translate mode)
+         contract + framework config     → locator_map file(s), unverified
 writer   contract + locator_map          → spec + framework files
 reviewer spec + contract                 → PASS / FAIL
 runner   spec + framework                → pass / fail / flaky / skipped, routed
@@ -176,7 +195,7 @@ For local development, load it directly without installing:
 claude --plugin-dir .
 ```
 
-The six agents then appear in `/context` under Custom Agents. `/migrate` appears in the
+The seven agents then appear in `/context` under Custom Agents. `/migrate` appears in the
 slash-command menu. The other three skills (`rules`, `contract`, `locator-map`) are
 preload-only, so none of them is invoked directly.
 
@@ -190,6 +209,13 @@ The shortest path is the orchestrator:
 
 It asks for anything it still needs (a `storageState`, an env file), then plans, drafts,
 probes, writes, reviews, and runs, and reports what finished and what stopped.
+
+To carry the source suite's locators over instead of probing the live app first, use
+translate mode. No live probe runs; the test run is the gate, and every run keeps a trace:
+
+```text
+/migrate cypress/e2e/ --framework-root=tests --locators=translate
+```
 
 To run the stages yourself, dispatch the agents from your Claude Code session in sequence:
 

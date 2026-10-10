@@ -102,6 +102,7 @@ Feedback reports arrive only from round 2 of an orchestrated loop. Read each one
 - From a reviewer report, address every `Blocking` finding. Address a `Non-blocking` one only when the fix is small and inside a file you are already changing.
 - From a runner report, address every failure whose `route` is `writer`, and every `flaky` test. The evidence names the failing locator and the spec line; the locator map, not the report, stays the source for which locator to use.
 - Modify the files you generated in the earlier round minimally. Do not regenerate them from scratch, and do not touch files the reports do not implicate.
+- When the current locator map grounds an element your earlier code carries with a `// carried:` marker (a re-probe replaced a translated entry), replace the carried locator with the grounded one and remove its marker in the same edit, as Rule 28 requires.
 - Never quiet a failure instead of fixing it: no added waits, retries, `test.fixme`, `test.skip`, or loosened assertions.
 - Record how you addressed each item in `assumptions_and_risks` with type `feedback`, and record any item you could not address with the reason.
 

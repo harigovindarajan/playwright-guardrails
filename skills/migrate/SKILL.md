@@ -1,7 +1,7 @@
 ---
 name: migrate
-description: Drive a test migration to Playwright through the plugin's sibling agents in order (planner, drafter, probe, writer, reviewer, runner), gating on locator grounding, routing review and runtime failures back to the right stage, and stopping for a human after a fixed number of rounds. Run from the main session, which spawns each agent in turn; no agent calls another. Use when the user asks to migrate a suite, a test file, or a contract to Playwright end to end.
-argument-hint: "<source suite root or test file> [--framework-root=tests] [--base-url=...] [--threshold=0.8] [--rounds=3]"
+description: Drive a test migration to Playwright through the plugin's sibling agents in order (planner, drafter, probe, writer, reviewer, runner), gating on locator grounding (or, in translate mode, carrying the source suite's locators over without a live probe), routing review and runtime failures back to the right stage, and stopping for a human after a fixed number of rounds. Run from the main session, which spawns each agent in turn; no agent calls another. Use when the user asks to migrate a suite, a test file, or a contract to Playwright end to end.
+argument-hint: "<source suite root or test file> [--framework-root=tests] [--base-url=...] [--locators=probe|translate] [--threshold=0.8] [--rounds=3]"
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -30,11 +30,12 @@ guess a URL, a path, or a credential.
 | Source helper paths (page objects, custom commands, fixtures) | no | none | drafter, planner |
 | Playwright framework root | yes | | writer, runner |
 | Page-objects dir inside the framework root | no | `<framework-root>/pages` if it exists | probe (Tier 1) |
-| App base URL | yes | | probe |
+| Locator source: `probe` (ground every locator against the live app) or `translate` (carry the source suite's locators over, see Translate mode) | no | `probe` | step 3 |
+| App base URL | in `probe` mode | | probe |
 | `storageState` path, and the env var name the framework reads it from | when any state is gated | | probe, runner |
 | Env file and required variable names | no | none | runner |
 | Migration dir (contracts, maps, cache, reports) | no | `.playwright-migration/` | all |
-| Grounding threshold | no | `0.8` | probe gate |
+| Grounding threshold | no | `0.8` | probe gate (not used in translate mode) |
 | Round cap | no | `3` | feedback loop |
 
 From the migration dir, use these sub-paths **for every round of every test case**, so that
@@ -86,7 +87,11 @@ paths, and `contracts/` as the output directory. Persist the manifest.
 - `non-blocking` questions: show them to the user and continue. The writer carries them as
   risks.
 
-### 3. Probe
+### 3. Probe (or translate)
+
+In translate mode, skip to **Translate mode** below; the rest of this step is the default
+`probe` path.
+
 
 Spawn `playwright-dom-probe` with the contract(s), the base URL, the `storageState`,
 `locator-maps/` as the output directory, the `r1` filename pattern above, `locator-cache/`,
@@ -111,6 +116,21 @@ writer works mostly from verified locators and the unverified rest are visible t
 reviewer and the runner. The `partial` rule covers what a ratio cannot: a single blocked state
 can hold few locators and still mean the journey is broken.
 
+#### Translate mode
+
+Spawn `playwright-locator-translator` instead of the probe, with the contract(s), the
+framework root, `locator-maps/` as the output directory, the `r1` filename pattern,
+`locator-cache/` and the page-objects dir when they exist (both read-only for it), and the
+`storageState` path when there is one (only its name is used). Persist the manifest.
+
+**Gate: none on grounding.** A translator map is unverified by design, so the grounding ratio
+does not apply; the runner is the gate in translate mode. Stop only when the manifest's
+`status` is `FAILED`. The writer marks every translated locator under Rule 28, and the
+reviewer treats a marked locator as residual risk the run settles.
+
+Translate mode keeps a trace of every run (see Run below), so a later step can ground the
+carried locators from what the runs observed, without the app.
+
 ### 4. Write, review, run: the feedback loop
 
 Run rounds `n = 1, 2, ...` up to the round cap.
@@ -129,17 +149,19 @@ Run rounds `n = 1, 2, ...` up to the round cap.
    - `PASS`: continue to the runner.
 3. **Run.** Spawn `playwright-test-runner` with the spec(s), the framework root,
    `runs/<testcase>/round-<n>/` as the run output directory, the current map and contract, the
-   `storageState` and its env var name, and the env file with its variable names. Persist the
+   `storageState` and its env var name, and the env file with its variable names. In translate
+   mode also pass trace `on`, so every attempt keeps a trace of each test. Persist the
    report, then append one entry per attempt in the report's `run.attempts` (a `FAILED`
    report can carry attempts too) to
    `runs/index.jsonl`: the test case, the round, the attempt number and folder, the attempt's
    result, the per-test outcomes (`null` for an `infra-failure` attempt), the locator-map
-   version the run used, and the path of the runner report you saved.
+   version the run used, the trace files the report lists for that attempt (`[]` when
+   tracing was off), and the path of the runner report you saved.
    Never rewrite or remove earlier entries; the index is how a later step finds a test case's
    runs without walking folders. One JSON object per line, for example:
 
    ```json
-   {"testcase": "adds-a-todo-and-completes-it", "round": 2, "attempt": 1, "dir": "runs/adds-a-todo-and-completes-it/round-2/attempt-1", "result": "tests-ran", "outcomes": {"pass": 1, "fail": 0, "flaky": 0, "skipped": 0}, "map": "locator-maps/adds-a-todo-and-completes-it-locator-map.r2.json", "report": "reports/adds-a-todo-and-completes-it/run-round-2.json"}
+   {"testcase": "adds-a-todo-and-completes-it", "round": 2, "attempt": 1, "dir": "runs/adds-a-todo-and-completes-it/round-2/attempt-1", "result": "tests-ran", "outcomes": {"pass": 1, "fail": 0, "flaky": 0, "skipped": 0}, "map": "locator-maps/adds-a-todo-and-completes-it-locator-map.r2.json", "traces": [], "report": "reports/adds-a-todo-and-completes-it/run-round-2.json"}
    ```
 
    A `FAILED` report (missing Playwright, browsers, env, or
@@ -147,8 +169,9 @@ Run rounds `n = 1, 2, ...` up to the round cap.
 4. **Route** on the runner's tests:
    - Every test `pass` (or `skipped` by design): **done** for this test case.
    - Any failure routed `human`: stop for a human with the evidence.
-   - Any failure routed `probe`: re-run the probe for this contract before the next round,
-     with the same output directory and the **next** round's filename pattern (after round 2,
+   - Any failure routed `probe`: in translate mode with no base URL, stop for a human: there
+     is no app to ground against. Otherwise re-run the probe for this contract before the
+     next round, with the same output directory and the **next** round's filename pattern (after round 2,
      `{testcase}-locator-map.r3.json`), so the earlier map is kept and the new one becomes the
      current map. Run it **without** the page-objects dir and the locator cache, so it
      re-grounds live instead of replaying the locator that just failed. If the new map's

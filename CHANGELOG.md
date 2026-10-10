@@ -3,6 +3,39 @@
 All notable changes to the **playwright-guardrails** plugin are documented here.
 This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [0.6.0] — 2026-10-10
+
+Translate mode: migrate a whole suite to a running state by carrying its existing locators
+over, without a live probe. First half of
+[#8](https://github.com/harigovindarajan/playwright-guardrails/issues/8); grounding the
+carried locators from saved traces follows in a later release.
+
+- **New `playwright-locator-translator` agent** (`sonnet`, `medium`; Read, Grep, Glob,
+  Write). The browser-free alternative to the probe. It converts each origin locator into the
+  Playwright locator that selects the same thing and writes it into the standard locator-map
+  shape. It reads the target config's `testIdAttribute`, so `#id` becomes `getByTestId`
+  only when the framework uses `id` as its test-id attribute. It makes equivalent
+  conversions only and never infers a role or name the source selector does not state. It
+  reuses page-object and cache groundings before translating and never writes the cache.
+- **`skills/locator-map/`** gains a `translated` grounding value (with `tier_source:
+  translation` and `provenance: translated`) and a `translated` count in
+  `grounding_summary`. Probe maps always report `translated: 0`.
+- **New Rule 28, "Mark carried-over locators".** A locator carried over unverified is marked
+  `// carried: <source selector>` on its defining line. A marked locator is residual risk
+  the test run settles, not a Rule 1 violation; an unmarked fallback is still judged under
+  Rule 1. The checklist gains matching checks, and the reviewer's `rule_id` range is now
+  1 to 28. Appended at the end, so no existing rule number changes.
+- **`playwright-test-writer`** marks every translated locator it carries, and when a re-probe
+  grounds an element it carried, swaps in the grounded locator and removes the marker in the
+  same edit.
+- **`playwright-test-runner`** takes an optional `trace` mode, passed as `--trace`, and
+  reports each test's trace files by path. It never opens a trace. A carried locator that
+  fails as written routes to the probe.
+- **`/migrate --locators=translate`** runs the translator instead of the probe, skips the
+  grounding gate (the runner is the gate), runs every round with traces on, and records each
+  attempt's trace files in `runs/index.jsonl`. A probe route with no base URL stops for a
+  human. The default stays `--locators=probe`.
+
 ## [0.5.0] — 2026-10-10
 
 Runtime verification, a canonical contract, suite-level planning, and a reference
