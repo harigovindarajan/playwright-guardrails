@@ -59,8 +59,12 @@ Create these directories (and each round's `runs/` directory) before the agent t
 runs. The drafter, the probe, and the runner require their output directories to exist and
 fail statically when they don't; creating them is your job, not theirs.
 
-You persist every agent's JSON response to `reports/` before acting on it. Later stages take
-those files as inputs, and the files are the audit trail of the migration.
+You persist every agent's JSON response to `reports/` before acting on it, **verbatim**:
+the exact JSON object the agent returned, never a summary, an excerpt, or a reformatted
+version. Later stages take those files as inputs (the writer reads the review and run reports
+as feedback, and the reviewer reads its own prior report for its findings ledger), so a
+trimmed report silently breaks the next round. The files are also the audit trail of the
+migration.
 
 ## Procedure
 

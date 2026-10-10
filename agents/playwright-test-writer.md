@@ -147,7 +147,7 @@ Generated files must follow the canonical rules:
 - Authenticated generated specs reuse login via `storageState` or an existing setup project. Do not UI-log-in per test except when the contract's actual behavior under test is login itself.
 - For destructive or irreversible flows, generate a self-contained data lifecycle: the test provisions the entity it later destroys, preferably via API setup, and deletes only that run-owned entity. If this intentionally deviates from contract flags such as "uses existing user", record the deviation in `assumptions_and_risks`.
 
-Write all required support files under the supplied framework root: specs, page objects, component objects, data modules/builders, fixtures, config, and helpers as needed by the contract. Do not create unrelated scaffolding.
+Write all required support files under the supplied framework root: specs, page objects, component objects, data modules/builders, fixtures, config, and helpers as needed by the contract. Do not create unrelated scaffolding, and never create empty placeholder files (`.gitkeep` or similar): writing a file creates its directory. Every file you write appears in `files_written`.
 
 ## Handoff Manifest
 
