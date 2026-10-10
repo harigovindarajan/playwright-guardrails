@@ -32,6 +32,8 @@ translation.
   framework, reading the suite's helpers to see what custom commands actually do. It
   copies source selectors verbatim, records fragile source mechanics as risk annotations
   rather than translating them, and turns what it can't determine into open questions.
+  Pinned to `sonnet` at `high` effort, because every later stage builds on its reading of
+  intent.
 - **New `playwright-migration-planner` agent.** Inventories a source suite (test files,
   test counts, shared dependencies, per-file risk flags from the contract skill's
   vocabulary) and returns a dependency-ordered sequence. No time estimates. Pinned to
@@ -46,7 +48,8 @@ translation.
   replacing the map, and each index line records which version that run used.
 - **`playwright-test-writer` accepts feedback reports.** A new optional input takes the
   previous round's review and run reports, so a feedback round revises the spec instead of
-  regenerating the same one. It also gains a `missing-feedback-report` failure type.
+  regenerating the same one. It also gains a `missing-feedback-report` failure type, and
+  its effort is raised from `medium` to `high`.
 - **`examples/login-contract.md`** now follows the canonical shape.
 
 > **Upgrade note.** Every contract-reading agent now preloads `playwright-guardrails:contract`

@@ -94,7 +94,7 @@ stays out.
 - `Element`: a short name for the element, stable within the contract.
 - `Source selector`: the source suite's selector, **verbatim**, exactly as the source test or
   its helper wrote it, including XPath, CSS, test ids, and framework-specific forms. It is a
-  brittle starting point; upgrading it is the probe's job, not the contract's.
+  brittle starting point; the contract never upgrades it.
 - `Page state`: the state the element lives in, named consistently with the steps (for
   example `home (anon)`, `sign-in`, `logged-in home`).
 - `User-facing description`: what a user would call it, with its role and visible name where

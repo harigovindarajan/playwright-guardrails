@@ -59,16 +59,16 @@ Do **not** fail because a dependency cannot be resolved, a framework is unfamili
 
 ### Inventory
 
-1. **Find test files.** Use the caller's include patterns when given. Otherwise apply the source framework's conventions: for example `*.cy.{js,ts}` and `cypress/e2e/**`, `*.spec.*` and `*.test.*`, `*Test.java` and classes with `@Test`, `test_*.py` and `*_test.py`, and `.feature` files with their step definitions. Apply exclude patterns last.
+1. **Find test files.** Use the caller's include patterns when given. Otherwise apply the source framework's conventions: for example `*.cy.{js,ts}` and `cypress/e2e/**`, `*.spec.*` and `*.test.*`, `*Test.java` and classes with `@Test`, `test_*.py` and `*_test.py`, C# test projects (`*Tests.cs`, `*Test.cs`, and classes marked `[TestFixture]` or `[TestClass]`, or holding `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]` methods, usually inside a `*.Tests.csproj`), and `.feature` files with their step definitions (Cucumber step files, or SpecFlow/Reqnroll `[Binding]` classes in C#). Apply exclude patterns last.
 2. **Identify each file's framework** from its imports and API.
-3. **Count tests per file.** Count each test case the framework would run (`it`, `test`, `@Test`, `def test_`, a scenario). Count skipped tests separately (`.skip`, `xit`, `@Disabled`, `@Ignore`). A parameterized or data-driven test counts once, with a note that it expands at runtime.
+3. **Count tests per file.** Count each test case the framework would run (`it`, `test`, `@Test`, `def test_`, `[Test]`, `[TestMethod]`, `[Fact]`, a scenario). Count skipped tests separately (`.skip`, `xit`, `@Disabled`, `@Ignore`, `[Ignore]`, `[Fact(Skip = ...)]`). A parameterized or data-driven test (including C# `[TestCase]`, `[DataRow]`, or `[Theory]` with `[InlineData]`) counts once, with a note that it expands at runtime.
 
 ### Shared dependencies
 
-A shared dependency is code or data a test file relies on that is not the file itself: page objects, custom commands, fixtures and fixture data, base test classes, helpers, hooks, and suite-level config that changes test behavior (a Cypress support file, a `conftest.py`, a base class with `@BeforeMethod`).
+A shared dependency is code or data a test file relies on that is not the file itself: page objects, custom commands, fixtures and fixture data, base test classes, helpers, hooks, and suite-level config that changes test behavior (a Cypress support file, a `conftest.py`, a base class with `@BeforeMethod`, a C# base class with `[SetUp]` or `[OneTimeSetUp]`, an NUnit `[SetUpFixture]`, or an xUnit `IClassFixture<T>`).
 
-1. **Follow explicit references**: imports, requires, `extends`, and fixture names.
-2. **Follow implicit ones** the framework wires up without an import: a Cypress `support/` file and `Cypress.Commands.add` definitions, `cy.fixture('name')` files, pytest `conftest.py` fixtures, a base class's lifecycle hooks.
+1. **Follow explicit references**: imports, requires, `extends`, C# `using` directives and base classes (`: BasePage`), and fixture names.
+2. **Follow implicit ones** the framework wires up without an import: a Cypress `support/` file and `Cypress.Commands.add` definitions, `cy.fixture('name')` files, pytest `conftest.py` fixtures, a base class's lifecycle hooks, NUnit `[SetUpFixture]` classes, xUnit collection fixtures, and SpecFlow/Reqnroll hooks (`[BeforeScenario]`, `[BeforeFeature]`).
 3. **Resolve dependencies of dependencies**, so a page object that imports a base page lists that base page as its own dependency.
 4. Record, for each dependency, what it provides (command names, page-object classes, fixture names) and every test file that uses it.
 5. A reference you cannot resolve inside the supplied paths is an **unresolved dependency**. Record it; do not guess what it does.

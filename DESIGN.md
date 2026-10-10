@@ -242,12 +242,14 @@ dependencies, config files, CI jobs, and the source tests themselves is left to 
 
 ## Mechanical vs. reasoning roles
 
-The probe, writer, and runner are mostly **mechanical**: the probe extracts (drive →
-snapshot → ground), the writer generates from fixed inputs, and the runner runs a command
-and reads its report. Running them at high reasoning effort buys little and dominates
-wall-clock. The drafter interprets, but is bounded by the rule to ask rather than guess. The
-reviewer and the planner are the roles that weigh tradeoffs: the reviewer classifies findings
-and issues a verdict, and the planner orders a whole suite.
+The probe and runner are mostly **mechanical**: the probe extracts (drive → snapshot →
+ground), and the runner runs a command and reads its report. Running them at high reasoning
+effort buys little and dominates wall-clock. The other four carry the migration's quality and
+run at `high`. The drafter reads what each existing test intends, and every later stage
+inherits that reading, so a shallow contract costs more than the extra reasoning does. The
+writer turns contract and map into code that has to fit the framework's conventions and pass
+review. The reviewer weighs findings and issues a verdict, and the planner orders a whole
+suite.
 
 Per-role model and effort are pinned in each agent's frontmatter so they are enforced by the
 plugin rather than left to the session default:
@@ -255,9 +257,9 @@ plugin rather than left to the session default:
 | Agent | `model` | `effort` | Why |
 | --- | --- | --- | --- |
 | `playwright-migration-planner` | `opus` | `high` | Suite-wide dependency resolution and ordering is reasoning, and a wrong order costs every later stage. It runs once per migration, so the cost is paid once. |
-| `playwright-contract-drafter` | `sonnet` | `medium` | Reading intent out of source tests and their helpers is interpretive, but bounded by the rule to ask rather than guess. |
+| `playwright-contract-drafter` | `sonnet` | `high` | Synthesizing what an existing test intends, through its helpers, is the input every later stage builds on. |
 | `playwright-dom-probe` | `sonnet` | `low` | Mechanical drive → snapshot → ground; scripted and deterministic. |
-| `playwright-test-writer` | `sonnet` | `medium` | Mechanical generation with some convention-matching. |
+| `playwright-test-writer` | `sonnet` | `high` | Generation that must match framework conventions, respect the rules, and act on review and run feedback. |
 | `playwright-test-reviewer` | `sonnet` | `high` | Weighs tradeoffs: classification and the verdict. |
 | `playwright-test-runner` | `sonnet` | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
 

@@ -2,7 +2,7 @@
 name: playwright-test-writer
 description: Use this agent when generating Playwright tests from caller-provided test contracts and a pre-built locator map, creating convention-matched Playwright specs and supporting framework files before review by playwright-test-reviewer. Live-DOM locator grounding is done upstream by playwright-dom-probe.
 model: sonnet
-effort: medium
+effort: high
 color: green
 tools: ["Read", "Grep", "Glob", "Write", "Edit"]
 skills: ["playwright-guardrails:rules", "playwright-guardrails:locator-map", "playwright-guardrails:contract"]
