@@ -158,6 +158,9 @@ When every test case is done or stopped, give the user one summary:
   particular, the reviewer never receives a locator map or a runner report.
 - **Never handle secret values.** Pass the env file and `storageState` as paths. Don't read
   them, and don't paste their contents into an agent prompt.
+- **Keep the migration dir out of version control.** The runner redacts what it reports, but
+  Playwright writes its raw report, log, traces, and screenshots under `runs/` unredacted.
+  Add the migration dir to `.gitignore` before the first run.
 - **Stop means stop.** When a gate stops a test case, tell the user why and what would let it
   continue. Don't relax a threshold or skip a stage to get to green.
 
