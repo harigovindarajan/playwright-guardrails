@@ -38,9 +38,9 @@ translation.
   follows to spawn the agents in order. It stops on `blocking` open questions, gates on the
   probe's grounding ratio (default `0.8`, and any `partial` map stops), routes review and
   runtime failures by the runner's suggested route, and stops for a human after 3 rounds.
-- **The writer accepts feedback reports.** A new optional input takes the previous round's
-  review and run reports, so a feedback round revises the spec instead of regenerating the
-  same one. It also gains a `missing-feedback-report` failure type.
+- **`playwright-test-writer` accepts feedback reports.** A new optional input takes the
+  previous round's review and run reports, so a feedback round revises the spec instead of
+  regenerating the same one. It also gains a `missing-feedback-report` failure type.
 - **`examples/login-contract.md`** now follows the canonical shape.
 
 > **Upgrade note.** Every contract-reading agent now preloads `playwright-guardrails:contract`
