@@ -44,6 +44,42 @@ the skills it preloads. Unlike the rules manifest, this skill carries its conten
 there is no file to read and no second load step. The reviewer does **not** preload it, which
 is what turns its blindness to the map into a declared decision rather than an omission.
 
+The **contract's shape** is carried the same way, in
+[`skills/contract/`](skills/contract/). The contract is the one input every agent shares, but
+until 0.5.0 its shape existed only as an example, and each agent carried its own list of what
+to look for in one. The probe described direct and driven steps, while the writer and the
+reviewer each listed intent, steps, data, and outcomes, three copies that could drift the way
+the locator map's copies did. The skill now defines the sections, the step markers, the
+origin-locators table, the risk vocabulary, and open questions once. Every agent that reads a
+contract preloads it, the reviewer included: the contract is the reviewer's own input, and only
+the locator map is kept from it.
+
+The contract skill is strict about what the drafter writes and lenient about what consumers
+read. A hand-written contract with different headings still works, because consumers find
+sections by meaning; only a contract with no findable intent, steps, or outcomes, or with an
+unresolved `blocking` open question, is too ambiguous to use. That keeps existing contracts
+working while giving drafted ones a single shape.
+
+## Drafting contracts is its own role
+
+The README has always said the best first step is to have an LLM draft a contract from the old
+test. [`playwright-contract-drafter`](agents/playwright-contract-drafter.md) makes that step a
+sibling with fixed inputs: source tests in any framework, plus the source suite's shared
+helpers so it can see what a call like `cy.login()` actually does. It writes contracts and
+returns a manifest of what it wrote and what it could not determine.
+
+It is deliberately not a translator. Mechanical selector-for-selector porting carries the
+source's brittleness straight into the new suite, which is the problem the probe exists to
+solve. So the drafter copies source selectors verbatim into the origin-locators table and
+leaves upgrading them to the probe, and it marks where the source leaned on its framework
+(Cypress retry-ability, `cy.session`, aliased network waits, Selenium sleeps, frames, tabs,
+order dependence) as **risk annotations** rather than rewriting them. What it cannot determine
+from the source becomes an explicit **open question**, never an invented step: a guessed step
+in a complete-looking contract would be reproduced faithfully by every stage after it.
+
+The drafter never touches the live app and never writes Playwright code, so it needs neither
+a browser nor the rules.
+
 ## Three roles, kept as siblings
 
 The pipeline is three independent single-role sub-agents. **None of them calls
@@ -139,6 +175,7 @@ rather than left to the session default:
 | `playwright-dom-probe`     | `low`    | Mechanical drive → snapshot → ground; scripted and deterministic. |
 | `playwright-test-writer`   | `medium` | Mechanical generation with some convention-matching.         |
 | `playwright-test-reviewer` | `high`   | The only role that weighs tradeoffs (classification, verdict). |
+| `playwright-contract-drafter` | `medium` | Reading intent out of source tests and their helpers is interpretive, but bounded by the rule to ask rather than guess. |
 | `playwright-test-runner`   | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
 
 The session advisor is a separate, harness-level lever the plugin cannot pin. For
