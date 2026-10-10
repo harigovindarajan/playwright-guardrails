@@ -16,8 +16,15 @@ agents. There is no second copy to keep in sync.
 - [`skills/rules/`](skills/rules/) — the framework rules and the review checklist. The
   probe, writer, and reviewer all consume them.
 - [`skills/locator-map/`](skills/locator-map/) — the shape of the locator map. The probe
-  writes maps in it, the writer reads them against it. The reviewer does **not** preload
-  it and must not: it stays blind to the map by design.
+  writes maps in it, the writer reads them against it, and the runner reads them to route
+  locator failures. The reviewer does **not** preload it and must not: it stays blind to the
+  map by design.
+- [`skills/contract/`](skills/contract/): the shape of a test contract, including the risk
+  vocabulary and open questions. The drafter writes contracts in it; the probe, writer,
+  reviewer, and runner read them against it; the planner uses its risk vocabulary.
+- [`skills/migrate/`](skills/migrate/): the reference orchestrator. Unlike the others it is
+  user-invocable and holds no shared shape: it is the procedure a session follows to spawn the
+  agents in order.
 
 Agents pick these up through their frontmatter `skills:` field, which injects the skill's
 content at startup — so a shared source is never passed in as a path and never copied into
@@ -45,18 +52,21 @@ expected finding.
 
 ## Changing an agent
 
-The three agents live in [`agents/`](agents/). Each is a single-role sub-agent that
-loads the canonical rules itself via its frontmatter `skills:` field — don't pass rule
-paths in as inputs, and keep each agent to its one role (the probe never generates,
-the writer never verdicts, the reviewer never edits). Per-role reasoning `effort` is
+The six agents live in [`agents/`](agents/). Each is a single-role sub-agent that
+loads its canonical sources itself via its frontmatter `skills:` field — don't pass rule
+paths in as inputs, and keep each agent to its one role (the planner never drafts, the
+drafter never writes Playwright code, the probe never generates, the writer never verdicts,
+the reviewer never edits, the runner never fixes). Per-role reasoning `effort` is
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
 Don't restate a shared source inside an agent — not field names, not enum values, not rule
 text. An agent describes how it *produces* or *consumes* the artifact; the skill describes
 what the artifact *is*. When you change the locator map's shape, change
-[`skills/locator-map/SKILL.md`](skills/locator-map/SKILL.md) and check that both the probe
-and the writer still hold up against it.
+[`skills/locator-map/SKILL.md`](skills/locator-map/SKILL.md) and check that the probe, the
+writer, and the runner still hold up against it. When you change the contract's shape or the
+risk vocabulary, change [`skills/contract/SKILL.md`](skills/contract/SKILL.md) and check every
+agent that preloads it.
 
 ## Before you open a PR
 
@@ -68,10 +78,20 @@ and the writer still hold up against it.
    ```bash
    claude --plugin-dir .
    ```
-   Check that the three agents appear in `/context` under Custom Agents. Both skills —
-   `rules` and `locator-map` — are preload-only (`user-invocable: false`), so neither
-   shows in the slash-command menu. Confirm the probe and the writer list both in their
-   `skills:` frontmatter and that the reviewer lists only `rules`.
+   Check that the six agents appear in `/context` under Custom Agents and that `/migrate`
+   shows in the slash-command menu. The `rules`, `contract`, and `locator-map` skills are
+   preload-only (`user-invocable: false`), so none of them shows there. Confirm each agent's
+   `skills:` frontmatter matches this table, and in particular that the reviewer does not
+   list `locator-map`:
+
+   | Agent | `skills:` |
+   | --- | --- |
+   | planner | `contract` |
+   | drafter | `contract` |
+   | probe | `rules`, `locator-map`, `contract` |
+   | writer | `rules`, `locator-map`, `contract` |
+   | reviewer | `rules`, `contract` |
+   | runner | `locator-map`, `contract` |
 3. Use clear, conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`) and
    open the PR against `main`.
 

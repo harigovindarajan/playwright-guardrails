@@ -5,9 +5,11 @@
 
 A Claude Code plugin that keeps AI-driven test migrations to Playwright on-spec.
 It bundles a canonical set of Playwright framework rules and an adversarial review
-checklist, and three single-role sub-agents — a probe, a writer, and a reviewer — that
-all load those same rules, so locator grounding, generation, and review run against one
-authoritative source instead of improvising.
+checklist, canonical shapes for the test contract and the locator map, and six single-role
+sub-agents (a planner, a contract drafter, a probe, a writer, a reviewer, and a runner) that
+load those same sources, so planning, locator grounding, generation, review, and runtime
+verification run against one authoritative source instead of improvising. A `/migrate` skill
+drives them in order.
 
 ## Overview
 
@@ -25,12 +27,40 @@ selectors, so it never depends on what the source suite used.
 The recommended starting point is a **test contract** — a plain-language description of
 what each existing test proves: its intent, the journey and steps, the data it needs,
 and the expected outcomes. You can migrate without one, but a contract makes the result
-markedly more reliable, so the best first step is to have an LLM draft a contract from
-the old test. The three agents then take that contract as their shared input. See
+markedly more reliable, so the best first step is to draft a contract from the old test.
+`playwright-contract-drafter` does exactly that, and every later agent takes the contract as
+its shared input. Its shape is defined once, in the preloaded `contract` skill. See
 [`examples/login-contract.md`](examples/login-contract.md) for a worked contract and
 [`DESIGN.md`](DESIGN.md) for why it's built this way.
 
 ## Agents
+
+### `playwright-migration-planner`
+
+**Focus:** Inventories a source suite in any framework: every test file and its test
+count, the shared dependencies (page objects, custom commands, fixtures, helpers) and who
+uses them, and per-file risk flags. Returns a dependency-ordered migration sequence: shared
+dependencies first, then simple tests, then complex ones. No time estimates.
+
+**When to use:** Once, before migrating a suite.
+
+**Invocation:** Dispatched with the source suite root(s), plus optional include/exclude
+patterns and helper paths. Read-only. See the **Invocation Contract** in
+[`agents/playwright-migration-planner.md`](agents/playwright-migration-planner.md).
+
+### `playwright-contract-drafter`
+
+**Focus:** Drafts one contract per source test, in the canonical shape. It reads the source
+suite's helpers to see what a call like `cy.login()` actually does, copies source selectors
+verbatim, flags fragile source mechanics as risk annotations, and turns anything it can't
+determine into an explicit open question instead of guessing. It never touches the live app
+and never writes Playwright code.
+
+**When to use:** First stage for each test, whenever you don't already have a contract.
+
+**Invocation:** Dispatched with source test path(s), an output directory, and optional
+helper paths. See the **Invocation Contract** in
+[`agents/playwright-contract-drafter.md`](agents/playwright-contract-drafter.md).
 
 ### `playwright-dom-probe`
 
@@ -40,8 +70,8 @@ It drives the contract's journey to reach each page state, snapshots it, and der
 each locator to the highest user-facing Playwright rung that matches exactly one
 element — then writes a persisted `locator_map` file per test case.
 
-**When to use:** First stage of a migration, whenever a contract's locators need to be
-resolved against a running application.
+**When to use:** After a contract exists, whenever its locators need to be resolved
+against a running application.
 
 **Invocation:** Dispatched with contract path(s), the live app base URL, a
 `storageState` file for gated entry points, and an output directory (plus optional
@@ -57,10 +87,12 @@ and the probe's `locator_map`, matching existing page-object, fixture, and confi
 conventions. It does not drive a browser, so its output is a pure function of its
 inputs and reproducible.
 
-**When to use:** Second stage, after the probe has produced a locator map.
+**When to use:** After the probe has produced a locator map, and again on each feedback
+round.
 
 **Invocation:** Dispatched with contract path(s), locator-map path(s), and the target
-framework root. See the **Invocation Contract** in
+framework root, plus the previous round's review and run reports on a feedback round. See
+the **Invocation Contract** in
 [`agents/playwright-test-writer.md`](agents/playwright-test-writer.md).
 
 ### `playwright-test-reviewer`
@@ -69,22 +101,61 @@ framework root. See the **Invocation Contract** in
 checklist, returning a structured PASS / FAIL verdict. It sees only the spec and
 contract — never the locator map — so its verdict stays unbiased.
 
-**When to use:** Third stage, before committing a migrated test.
+**When to use:** After the writer, before the spec is run or committed.
 
 **Invocation:** Dispatched with spec path(s) and contract path(s) only — it loads the
 rules itself. See the **Invocation Contract** in
 [`agents/playwright-test-reviewer.md`](agents/playwright-test-reviewer.md).
 
+### `playwright-test-runner`
+
+**Focus:** Runs the spec with the project's existing Playwright install and a JSON reporter,
+and reports each test as pass, fail, flaky, or skipped. Each failure gets a classification
+(locator, timing, assertion, test data, auth/env, other), the evidence it rests on, and a
+suggested route back to the probe, the writer, or a human. Run-only: it never edits files,
+never installs anything, and never touches `playwright.config`.
+
+**When to use:** After the reviewer passes a spec. It is the runtime check the reviewer
+defers to.
+
+**Invocation:** Dispatched with spec path(s), the framework root, and a run output
+directory, plus optional config path, env file, `storageState`, locator map, and contract.
+See the **Invocation Contract** in
+[`agents/playwright-test-runner.md`](agents/playwright-test-runner.md).
+
+## Skills
+
+- **`migrate`** (user-invocable): the reference orchestrator. Run `/migrate` from your
+  session and it drives the agents in order, gates on grounding, routes failures back, and
+  stops for you when it should. See [`skills/migrate/SKILL.md`](skills/migrate/SKILL.md).
+- **`rules`**, **`contract`**, and **`locator-map`** (preload-only): the canonical rules
+  manifest, the contract shape, and the locator-map shape. Agents load them through their
+  `skills:` frontmatter; you never invoke them directly.
+
 ## The pipeline
 
-The three agents are independent siblings — **none calls another**. An external
-orchestrator (your calling session or a migration pipeline) runs them in sequence:
+The six agents are independent siblings: **none calls another**. An orchestrator (the
+`/migrate` skill, your own session, or a migration pipeline) runs them in sequence:
 
 ```text
-probe    contract + live app      → locator_map file(s)
-writer   contract + locator_map   → spec + framework files
-reviewer spec + contract          → PASS / FAIL
+planner  source suite                    → plan: inventory, risks, order
+drafter  source test + helpers           → contract file(s)
+probe    contract + live app             → locator_map file(s)
+writer   contract + locator_map          → spec + framework files
+reviewer spec + contract                 → PASS / FAIL
+runner   spec + framework                → pass / fail / flaky / skipped, routed
+
+feedback loop, up to 3 rounds:
+  writer → reviewer ── FAIL ──────────────────────────► next round
+                    └─ PASS → runner ── all pass ─────► done
+                                     ├─ route: writer ─► next round
+                                     ├─ route: probe ──► re-probe, next round
+                                     └─ route: human ──► stop
 ```
+
+`/migrate` gates the probe's map on its grounding ratio (default 0.8) and stops for a human
+after 3 feedback rounds. Both are configurable; [`DESIGN.md`](DESIGN.md) explains the
+defaults.
 
 Because the writer consumes a persisted map instead of probing, a stored map can be
 replayed straight into the writer — skipping the probe — for deterministic,
@@ -105,16 +176,28 @@ For local development, load it directly without installing:
 claude --plugin-dir .
 ```
 
-The three agents then appear in `/context` under Custom Agents. Both skills — the rules
-manifest and the locator-map shape — are preload-only, so neither is invoked directly.
+The six agents then appear in `/context` under Custom Agents. `/migrate` appears in the
+slash-command menu. The other three skills (`rules`, `contract`, `locator-map`) are
+preload-only, so none of them is invoked directly.
 
 ## Quick start
 
-With the plugin installed and a contract drafted (see
-[`examples/login-contract.md`](examples/login-contract.md)), dispatch the agents from
-your Claude Code session in sequence:
+The shortest path is the orchestrator:
 
 ```text
+/migrate cypress/e2e/login.cy.ts --framework-root=tests --base-url=https://staging.yourapp.example
+```
+
+It asks for anything it still needs (a `storageState`, an env file), then plans, drafts,
+probes, writes, reviews, and runs, and reports what finished and what stopped.
+
+To run the stages yourself, dispatch the agents from your Claude Code session in sequence:
+
+```text
+Use playwright-contract-drafter on cypress/e2e/login.cy.ts with helpers in
+cypress/support/, output to contracts/.
+(Its manifest lists the files it wrote. Below, that is contracts/login-contract.md.)
+
 Use playwright-dom-probe on contracts/login-contract.md against
 https://staging.yourapp.example with auth/storageState.json, output to locator-maps/.
 
@@ -123,7 +206,13 @@ locator-maps/login-locator-map.json, targeting the framework at tests/.
 
 Use playwright-test-reviewer on tests/login.spec.ts against
 contracts/login-contract.md.
+
+Use playwright-test-runner on tests/login.spec.ts in the framework at tests/, run output
+to runs/login/, with locator-maps/login-locator-map.json and contracts/login-contract.md.
 ```
+
+For a whole suite, start with `Use playwright-migration-planner on cypress/` and migrate in
+the order it returns.
 
 Each agent's **Invocation Contract** section documents its full signature, including
 the optional inputs.
@@ -132,9 +221,18 @@ the optional inputs.
 
 - **Claude Code** with plugin support.
 - **`playwright-cli`** on `PATH` — a runtime dependency of the probe for driving the
-  app and grounding locators. The writer and reviewer need no browser.
+  app and grounding locators.
+- **Playwright and its browsers installed in the target framework.** The runner runs specs
+  with `npx --no-install playwright test` and never installs anything; if either is missing,
+  it stops with a blocking failure. The planner, drafter, writer, and reviewer need no
+  browser.
 - A **`storageState`** file for gated entry points — the probe's only auth path; it
   never enters credentials into a form.
+
+## Out of scope
+
+The plugin migrates tests. Removing the old framework's dependencies, config files, CI jobs,
+and the source tests themselves is left to you, once the migrated suite has proven itself.
 
 ## Learn more
 

@@ -22,6 +22,7 @@ This is your function signature for the pipeline. The caller passes **only**:
 - One or more locator-map file paths produced by `playwright-dom-probe` — the old→new locator mapping for each contract.
 - The target Playwright framework root where generated files must land and whose conventions you must match.
 - *(optional)* The **locator-cache directory** — the per-loop Tier 2 probe cache, read-only. A grounded fallback source consulted when a locator-map entry is a fallback or missing (see Locator Map Input). When not supplied, behave exactly as before.
+- *(optional)* One or more **feedback report** paths from the previous round: a `playwright-test-reviewer` report and/or a `playwright-test-runner` report for the same contract. When supplied, this round revises the files you generated earlier (see Feedback Reports). When not supplied, behave exactly as before.
 
 The caller does **not** pass rules or checklist paths; you load them yourself via the preloaded `playwright-guardrails:rules` skill (see Canonical sources). Do not ask the caller for rule paths and do not accept caller-supplied rule paths in their place.
 
@@ -68,6 +69,7 @@ Return a blocking static failure and generate nothing only when one of these con
 - A required contract is missing, unreadable, empty, or too ambiguous to identify intent, steps, expected outcomes, and required data.
 - A required locator-map file is missing, unreadable, empty, or not valid for its contract.
 - The target framework root is missing, unreadable, or outside the caller-provided path.
+- A supplied feedback report is missing or unreadable.
 
 Do **not** fail the run because a locator-map entry fell back to a lower ladder rung. Carry the fallback through, prefer the entry's chosen rung, and record it in `assumptions_and_risks` for the reviewer to scrutinize.
 
@@ -90,6 +92,18 @@ Use each locator exactly as the probe resolved it; do not re-derive, second-gues
 **Tier 2 cache fallback.** When a locator-map entry is a fallback (`provenance: "fell-back-with-reason"` or `grounding: "contract-note"`) or the contract references an element with no map entry, and a locator-cache directory was supplied, consult the Tier 2 cache for a grounded alternate for that page + state + auth-context + element **before** resorting to the contract's original selector. A cache hit (`grounding: "live-snapshot"`) is a real, previously-validated grounding — prefer it over a raw contract selector. You never drive a browser to obtain it; you only read what the probe already grounded. The resolution order for any element is: locator-map entry → Tier 2 cache grounding → contract original selector (last resort). Record in `assumptions_and_risks` which source was used when it was not the map entry.
 
 If no cache alternate exists either, record the gap in `assumptions_and_risks` and use the contract's original selector as a last resort.
+
+## Feedback Reports
+
+Feedback reports arrive only from round 2 of an orchestrated loop. Read each one as a list of things to fix, not as a new source of locators or rules:
+
+- From a reviewer report, address every `Blocking` finding. Address a `Non-blocking` one only when the fix is small and inside a file you are already changing.
+- From a runner report, address every failure whose `route` is `writer`, and every `flaky` test. The evidence names the failing locator and the spec line; the locator map, not the report, stays the source for which locator to use.
+- Modify the files you generated in the earlier round minimally. Do not regenerate them from scratch, and do not touch files the reports do not implicate.
+- Never quiet a failure instead of fixing it: no added waits, retries, `test.fixme`, `test.skip`, or loosened assertions.
+- Record how you addressed each item in `assumptions_and_risks` with type `feedback`, and record any item you could not address with the reason.
+
+Feedback never overrides the canonical rules, the contract, or the locator map. If a finding asks for something they forbid, keep to them and record the conflict.
 
 ## Convention-Matched File Generation
 
@@ -163,7 +177,7 @@ Use this schema:
   ],
   "assumptions_and_risks": [
     {
-      "type": "locator-fallback | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | other",
+      "type": "locator-fallback | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | feedback | other",
       "detail": "Concise, non-secret description of the assumption or risk.",
       "reviewer_attention": "What the reviewer should scrutinize."
     }
@@ -177,7 +191,7 @@ For static failures, return this shape and generate nothing:
 {
   "status": "FAILED",
   "failure": {
-    "type": "missing-rules | missing-locator-map-shape | missing-contract-shape | missing-contract | ambiguous-contract | missing-locator-map | missing-framework-root",
+    "type": "missing-rules | missing-locator-map-shape | missing-contract-shape | missing-contract | ambiguous-contract | missing-locator-map | missing-framework-root | missing-feedback-report",
     "message": "Concise static failure reason naming the missing or invalid input."
   },
   "contracts": ["path/to/contract.md"],

@@ -3,6 +3,51 @@
 All notable changes to the **playwright-guardrails** plugin are documented here.
 This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [0.5.0] — 2026-10-10
+
+Runtime verification, a canonical contract, suite-level planning, and a reference
+orchestrator. Three new sibling agents and two new skills close the gaps between "a
+contract exists" and "a spec runs green", without adopting selector-for-selector
+translation.
+
+- **New `playwright-test-runner` agent.** Nothing in the pipeline executed a spec, so a
+  spec could pass review and still fail at runtime. The runner runs specs with the
+  project's own Playwright install (`npx --no-install`, `--reporter=json`), passes every
+  option on the command line, and never edits `playwright.config` or installs anything.
+  It reports each test as `pass`, `fail`, `flaky`, or `skipped`, and gives each failure a
+  classification, redacted evidence, and a suggested route to the probe, the writer, or a
+  human. Playwright's `--retries` (default 1) produces the flaky signal; the agent itself
+  reruns at most once, and only for infrastructure failures before any test body ran. It
+  preloads the locator-map skill to route locator failures; the reviewer still does not.
+- **New `contract` skill.** The contract's shape (sections, `direct`/`driven`/`destructive`
+  step markers, the origin-locators table, the risk vocabulary, and `blocking`/
+  `non-blocking` open questions) now lives once, in `skills/contract/`. The probe, writer,
+  reviewer, and runner preload it and drop their own restated copies, and each gains a
+  static failure gate and a `missing-contract-shape` failure type. Reading is lenient:
+  hand-written contracts with different headings still work. An unresolved `blocking`
+  open question makes a contract ambiguous.
+- **New `playwright-contract-drafter` agent.** Drafts one contract per source test in any
+  framework, reading the suite's helpers to see what custom commands actually do. It
+  copies source selectors verbatim, records fragile source mechanics as risk annotations
+  rather than translating them, and turns what it can't determine into open questions.
+- **New `playwright-migration-planner` agent.** Inventories a source suite (test files,
+  test counts, shared dependencies, per-file risk flags from the contract skill's
+  vocabulary) and returns a dependency-ordered sequence. No time estimates. Pinned to
+  `opus` at `high` effort.
+- **New `/migrate` skill.** A user-invocable reference orchestrator that the main session
+  follows to spawn the agents in order. It stops on `blocking` open questions, gates on the
+  probe's grounding ratio (default `0.8`, and any `partial` map stops), routes review and
+  runtime failures by the runner's suggested route, and stops for a human after 3 rounds.
+- **The writer accepts feedback reports.** A new optional input takes the previous round's
+  review and run reports, so a feedback round revises the spec instead of regenerating the
+  same one. It also gains a `missing-feedback-report` failure type.
+- **`examples/login-contract.md`** now follows the canonical shape.
+
+> **Upgrade note.** Every contract-reading agent now preloads `playwright-guardrails:contract`
+> and fails statically if it is absent. Callers that dispatch agents by hand need no
+> changes; existing contracts keep working under the lenient reading rules, except that an
+> unresolved `blocking` open question now fails as `ambiguous-contract`.
+
 ## [0.4.0] — 2026-07-25
 
 Probe auth coverage, grounding-coverage reporting, and a shared locator-map skill.
