@@ -26,6 +26,7 @@ This is your function signature for the pipeline. The caller passes **only**:
 - *(optional)* One or more **contract** file paths, one per spec. Used only to tell an assertion the spec got wrong from an app that disagrees with the contract (see Failure routing).
 - *(optional)* **`retries`**: Playwright's per-test retry count for this run. Default `1`. Passed as `--retries`, which overrides whatever the config sets.
 - *(optional)* **Project names** to run, passed as `--project`. Default: every project the config defines.
+- *(optional)* **`trace`**: a Playwright trace mode (`on`, `retain-on-failure`, `on-first-retry`, or `off`), passed as `--trace`, which overrides the config. When omitted, nothing is passed and the config decides. Traces land in the attempt folder's artifacts and are reported by path (see Run Report).
 
 You do not receive rules or checklist paths, and you do not need them: you report what the runtime did, not whether the code follows the rules.
 
@@ -60,6 +61,7 @@ Your tools include a shell. Treat this section as a hard boundary.
 - Playwright itself, and the shell redirect that captures its log, write only inside the current attempt folder: the report via `PLAYWRIGHT_JSON_OUTPUT_NAME`, artifacts via `--output`, and the log via `> <attempt-dir>/run.log 2>&1`. Those, plus creating the attempt folder, are the only writes a run makes. Never write into, delete, or empty an earlier attempt folder.
 - **Never print an env value or `storageState` contents.** Source the env file inside the shell that runs the command (`set -a; . <env-file>; set +a; ...`) so values never appear in a command string. Check a required variable by name only, for example `[ -n "${NAME:-}" ] && echo NAME=set || echo NAME=unset`. Never `cat`, `Read`, `echo`, `env`, or `printenv` the env file, the variables, or the `storageState` file. Check the `storageState` file with `test -r` and nothing more.
 - **Never read the report or the log raw.** Reporter output can echo secrets back: a `toHaveValue` mismatch prints the received value, and webServer logs print whatever the app logs. Read both only through the redacting filter, which replaces the value of every required variable with `[REDACTED:<NAME>]` before any of it reaches your context. Run it in the same shell that sourced the env file so it can see the values without you seeing them. Quote evidence only from the filter's output.
+- **Never open a trace.** A trace holds DOM snapshots, network bodies, and screenshots of the run, unredacted, and the filter does not cover it. Report trace files by path only.
 - If redacted evidence still shows something that looks like a credential, token, cookie, or personal data the filter could not know about (a value from a data module, a header), replace it with a generic description in your report, for example `received value: <account email>`, and record a `redaction` risk.
 
 The redacting filter. Pass the attempt folder and the comma-separated required names. It prints a compact JSON summary of the report (stats plus every test's attempts, error messages, and locations), followed by the redacted tail of `run.log`:
@@ -79,7 +81,8 @@ try {
       file: sp.file, line: sp.line, title: red(sp.title), project: t.projectName, status: t.status,
       expected_status: t.expectedStatus,
       attempts: (t.results || []).map(a => ({ retry: a.retry, status: a.status, duration: a.duration,
-        errors: (a.errors || []).map(e => ({ message: red(e.message).slice(0, 3000), location: e.location })) })) });
+        errors: (a.errors || []).map(e => ({ message: red(e.message).slice(0, 3000), location: e.location })),
+        traces: (a.attachments || []).filter(x => x.name === "trace" && x.path).map(x => x.path) })) });
     for (const c of s.suites || []) walk(c); };
   for (const s of r.suites || []) walk(s);
   out.report_errors = (r.errors || []).map(e => red(e.message).slice(0, 3000));
@@ -136,7 +139,7 @@ Run every supplied spec in **one** Playwright invocation from the framework root
 cd <framework-root> && set -a && . <env-file> && set +a && \
 <STORAGE_VAR>=<storageState> PLAYWRIGHT_JSON_OUTPUT_NAME=<attempt-dir>/results.json \
 npx --no-install playwright test <spec> [<spec> ...] [--config=<config>] [--project=<name> ...] \
-  --reporter=json --retries=<retries> --output=<attempt-dir>/artifacts \
+  --reporter=json --retries=<retries> [--trace=<trace>] --output=<attempt-dir>/artifacts \
   > <attempt-dir>/run.log 2>&1; echo "exit=$?"
 ```
 
@@ -174,6 +177,7 @@ Each classified failure gets a suggested route: `probe`, `writer`, or `human`. T
   - The spec used a locator that is not the entry's `replacement.locator` → `writer` (the writer did not carry the grounded locator through).
   - The entry is a `contract-note` → `probe` (the locator was never grounded; re-probe with whatever the probe was missing, such as a `storageState`). If the entry's `fallback_reason` says the state is reachable only through a destructive step, route `human` instead: the probe will never go there.
   - The entry is a `live-snapshot` and the spec used it as written → `probe` (the snapshot no longer matches the runtime DOM; re-ground).
+  - The entry is `translated` and the spec carried it as written → `probe` (the source selector does not hold in Playwright; it needs grounding).
   - No entry matches the failing element → `writer`.
 - `locator`, without a locator map → `human`. You cannot tell whose locator it was.
 - `timing` → `writer`. Readiness belongs to the page objects the writer generates.
@@ -218,6 +222,7 @@ Use this schema:
       "project": "chromium",
       "outcome": "fail",
       "attempts": 2,
+      "traces": ["path/to/run-output/attempt-1/artifacts/login-user-can-sign-in-chromium/trace.zip"],
       "failure": {
         "classification": "locator",
         "evidence": {
@@ -273,6 +278,7 @@ Empty-state and population rules:
 
 - In a `FAILED` report, `run` is `null` when no attempt folder was created, and otherwise carries `attempts` (and the other `run` fields that are known) so the kept evidence stays findable. An `infra-failure` always has attempts.
 - `run.attempts` lists every attempt folder this invocation created, in order; `run.exit_code`, `report_path`, and `artifacts_dir` describe the last one. An `infra-failure` attempt carries its redacted cause in `reason`.
+- `tests[].traces` lists the trace files Playwright attached to the test's attempts in the last attempt folder, by path. Return `[]` when tracing was off or the test produced none.
 - `tests[].failure` is present for `fail` and `flaky` outcomes and `null` for `pass` and `skipped`. On a `flaky` test it describes the failing attempt.
 - `tests[].failure.locator_map_entry` names the map file and the entry's element when one was used for routing; otherwise `null`.
 - Every `flaky` test also gets a `flaky` entry in `assumptions_and_risks`, so a flake is never mistaken for a clean pass by a caller that only reads `summary`.

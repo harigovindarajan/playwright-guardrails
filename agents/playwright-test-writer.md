@@ -19,7 +19,7 @@ Return JSON only. Do not wrap the response in markdown fences. Do not include pr
 This is your function signature for the pipeline. The caller passes **only**:
 
 - One or more test contract file paths.
-- One or more locator-map file paths produced by `playwright-dom-probe` — the old→new locator mapping for each contract.
+- One or more locator-map file paths produced by `playwright-dom-probe`, or by `playwright-locator-translator` in translate mode — the old→new locator mapping for each contract.
 - The target Playwright framework root where generated files must land and whose conventions you must match.
 - *(optional)* The **locator-cache directory** — the per-loop Tier 2 probe cache, read-only. A grounded fallback source consulted when a locator-map entry is a fallback or missing (see Locator Map Input). When not supplied, behave exactly as before.
 - *(optional)* One or more **feedback report** paths from the previous round: a `playwright-test-reviewer` report and/or a `playwright-test-runner` report for the same contract. When supplied, this round revises the files you generated earlier (see Feedback Reports). When not supplied, behave exactly as before.
@@ -89,9 +89,11 @@ Each contract arrives with a locator-map file from `playwright-dom-probe`. Read 
 
 Use each locator exactly as the probe resolved it; do not re-derive, second-guess, or "upgrade" it — the probe already validated it against the live DOM. When an entry is a fallback or a low rung, carry it through and surface it in `assumptions_and_risks` for the reviewer.
 
-**Tier 2 cache fallback.** When a locator-map entry is a fallback (`provenance: "fell-back-with-reason"` or `grounding: "contract-note"`) or the contract references an element with no map entry, and a locator-cache directory was supplied, consult the Tier 2 cache for a grounded alternate for that page + state + auth-context + element **before** resorting to the contract's original selector. A cache hit (`grounding: "live-snapshot"`) is a real, previously-validated grounding — prefer it over a raw contract selector. You never drive a browser to obtain it; you only read what the probe already grounded. The resolution order for any element is: locator-map entry → Tier 2 cache grounding → contract original selector (last resort). Record in `assumptions_and_risks` which source was used when it was not the map entry.
+**Tier 2 cache fallback.** When a locator-map entry is a fallback (`provenance: "fell-back-with-reason"`, `grounding: "contract-note"`, or `grounding: "translated"`) or the contract references an element with no map entry, and a locator-cache directory was supplied, consult the Tier 2 cache for a grounded alternate for that page + state + auth-context + element **before** resorting to the contract's original selector. A cache hit (`grounding: "live-snapshot"`) is a real, previously-validated grounding — prefer it over a raw contract selector. You never drive a browser to obtain it; you only read what the probe already grounded. The resolution order for any element is: locator-map entry → Tier 2 cache grounding → contract original selector (last resort). Record in `assumptions_and_risks` which source was used when it was not the map entry.
 
 If no cache alternate exists either, record the gap in `assumptions_and_risks` and use the contract's original selector as a last resort.
+
+**Carried-over locators.** An entry with `grounding: "translated"` that no cache grounding replaced is a carried-over locator under Rule 28. Use its `replacement.locator` exactly as given; do not upgrade it, and do not swap in a role or label from the contract's description. On the line that defines it in the page object, add the marker `// carried: <source selector>`, with the entry's `source.selector` copied verbatim (credential-typed values stay generic, as everywhere else). Every carried locator gets a marker, whatever rung it landed on; a locator from a probe-grounded entry, or one the cache replaced, never does. Record the number of carried locators in one `carried-locator` entry in `assumptions_and_risks`.
 
 ## Feedback Reports
 
@@ -177,7 +179,7 @@ Use this schema:
   ],
   "assumptions_and_risks": [
     {
-      "type": "locator-fallback | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | feedback | other",
+      "type": "locator-fallback | carried-locator | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | feedback | other",
       "detail": "Concise, non-secret description of the assumption or risk.",
       "reviewer_attention": "What the reviewer should scrutinize."
     }
