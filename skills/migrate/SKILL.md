@@ -46,6 +46,10 @@ reports, maps, and the cache line up across rounds:
 - `reports/<testcase>/`: every agent's JSON, written by you as `<stage>-round-<n>.json`
 - `runs/<testcase>/round-<n>/`: the runner's run output directory for that round
 
+Create these directories (and each round's `runs/` directory) before the agent that needs them
+runs. The drafter, the probe, and the runner require their output directories to exist and
+fail statically when they don't; creating them is your job, not theirs.
+
 You persist every agent's JSON response to `reports/` before acting on it. Later stages take
 those files as inputs, and the files are the audit trail of the migration.
 
