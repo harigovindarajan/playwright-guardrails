@@ -80,6 +80,28 @@ in a complete-looking contract would be reproduced faithfully by every stage aft
 The drafter never touches the live app and never writes Playwright code, so it needs neither
 a browser nor the rules.
 
+## Planning a suite is a separate role from drafting a test
+
+A contract describes one test. A migration is a suite, and the order matters: a suite whose
+every test logs in through one custom command should migrate a test that exercises that
+command first, so its page objects and fixtures land once and every later probe can reuse them.
+[`playwright-migration-planner`](agents/playwright-migration-planner.md) inventories the source
+suite (every test file, its test count, the shared dependencies and who uses them) and returns
+a dependency-ordered sequence: shared dependencies first, each with the simplest test that
+seeds it, then simple test files, then complex ones.
+
+Its per-file risk flags come from the contract skill's risk vocabulary, which it preloads for
+that alone. One vocabulary means a flag the planner raises for a file reappears as an
+annotation in the contracts the drafter writes for it, rather than as a near-synonym from a
+second list.
+
+The plan carries **no time estimates**. A per-test minute figure cannot be traced to anything
+in the source, and a plan that invents numbers trains people to trust the parts that are also
+invented. Complexity is a sequencing input, not a cost.
+
+Planning stays separate from drafting so that each agent keeps one role: the planner reads
+the whole suite shallowly, the drafter reads one test deeply.
+
 ## Three roles, kept as siblings
 
 The pipeline is three independent single-role sub-agents. **None of them calls
@@ -176,6 +198,7 @@ rather than left to the session default:
 | `playwright-test-writer`   | `medium` | Mechanical generation with some convention-matching.         |
 | `playwright-test-reviewer` | `high`   | The only role that weighs tradeoffs (classification, verdict). |
 | `playwright-contract-drafter` | `medium` | Reading intent out of source tests and their helpers is interpretive, but bounded by the rule to ask rather than guess. |
+| `playwright-migration-planner` | `high` (opus) | Suite-wide dependency resolution and ordering is reasoning, and a wrong order costs every later stage; it runs once per migration, so the cost is paid once. |
 | `playwright-test-runner`   | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
 
 The session advisor is a separate, harness-level lever the plugin cannot pin. For
