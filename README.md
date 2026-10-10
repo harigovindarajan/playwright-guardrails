@@ -128,7 +128,7 @@ rules itself. See the **Invocation Contract** in
 
 **Focus:** Runs the spec with the project's existing Playwright install and a JSON reporter,
 and reports each test as pass, fail, flaky, or skipped. Each failure gets a classification
-(locator, timing, assertion, test data, auth/env, other), the evidence it rests on, and a
+(locator, timing, assertion, test data, auth/env, obstructed page, other), the evidence it rests on, and a
 suggested route back to the probe, the writer, or a human. Run-only: it never edits files,
 never installs anything, and never touches `playwright.config`.
 

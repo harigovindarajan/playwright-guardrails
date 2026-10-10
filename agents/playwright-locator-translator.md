@@ -91,6 +91,8 @@ Translate each source selector into the Playwright locator that selects **the sa
 - **Everything else** stays what it was: a CSS selector becomes `locator('<css>')` and an XPath becomes `locator('xpath=<xpath>')`, verbatim, at the `structural` rung when it scopes or positions and the `original` rung otherwise. Selenium `By.name("q")` becomes `locator('[name="q"]')`, and `By.className`/`By.tagName` become the equivalent CSS.
 - **Selectors built at runtime** (string concatenation, a parameter) are copied as the expression the contract records, at the `original` rung, with a `fallback_reason` naming the dynamic part.
 
+Copy each entry's `source.selector` exactly as the contract's Source selector column records it, strategy call included (`By.id("name")`, never a bare `name`), with the matching `source_type` from the locator-map skill. That string is what the writer puts in the Rule 28 marker. If a contract row holds only a bare value whose strategy the contract names elsewhere, rebuild the call from what the contract states and record that in the entry's `notes`.
+
 **Never infer what the source does not state.** Do not turn a CSS selector into `getByRole` because the contract's user-facing description names a role, and do not guess an accessible name. The description is evidence for grounding against a page, which is not your role. Write the description into the entry's `notes` so a later grounding step can use it.
 
 Every translated entry has `grounding: "translated"` and the field values the locator-map skill pins for it, whatever rung it lands on. A `getByRole` translated from link text is still unverified.

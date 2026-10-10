@@ -55,7 +55,7 @@ One entry per source locator or contract page-state target:
   "contract": "path/to/contract.md",
   "source": {
     "selector": "//original-or-css-selector",
-    "source_type": "xpath | css | testid | contract-note | inferred",
+    "source_type": "xpath | css | testid | strategy | contract-note | inferred",
     "contract_step": "Step 7: click Login"
   },
   "replacement": {
@@ -97,6 +97,10 @@ field values:
   `source.selector` holds the source selector verbatim. The generated code carries it as a
   carried-over locator (Rule 28 of the canonical rules), and the runtime run is what proves
   it.
+
+`source.selector` holds the source selector exactly as the contract records it. `source_type`
+says what kind it is: `strategy` for a framework locator call such as `By.id("name")`,
+`By.linkText("Sign in")`, or `cy.contains('Save')`, kept whole so the strategy is not lost.
 
 `tier_source` records how *this run* resolved the locator: `page-object` (reused from
 Tier 1), `cache` (reused from Tier 2), `live` (freshly driven this run), or `translation`

@@ -93,7 +93,10 @@ stays out.
 
 - `Element`: a short name for the element, stable within the contract.
 - `Source selector`: the source suite's selector, **verbatim**, exactly as the source test or
-  its helper wrote it, including XPath, CSS, test ids, and framework-specific forms. It is a
+  its helper wrote it, including XPath, CSS, test ids, and framework-specific forms. When the
+  source locates by a strategy call, copy the call, not just its value: `By.id("name")`,
+  `By.linkText("Sign in")`, `@FindBy(id = "name")`, `cy.contains('Save')`. A bare `name` loses
+  what kind of selector it was. It is a
   brittle starting point; the contract never upgrades it.
 - `Page state`: the state the element lives in, named consistently with the steps (for
   example `home (anon)`, `sign-in`, `logged-in home`).

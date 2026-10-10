@@ -36,6 +36,29 @@ carried locators from saved traces follows in a later release.
   attempt's trace files in `runs/index.jsonl`. A probe route with no base URL stops for a
   human. The default stays `--locators=probe`.
 
+**Fixes from a real Selenium run.** A translate-mode migration of three tests from a
+26-test Selenium Java suite (against a public demo site, with `testIdAttribute: 'data-qa'`)
+passed end to end and exercised the carried-locator → probe route for the first time. It
+also surfaced these, fixed before release:
+
+- **The runner could not tell a covered page from a wrong locator.** An ad interstitial hid
+  the page (root `aria-hidden`), and grounded headings failed as "not found" and were routed
+  to the probe. A new `obstructed` class, routed to a human, is detected from Playwright's
+  error-context snapshot and the error text. The pinned filter returns only yes/no flags
+  (`root_hidden`, `dialog_open`, `action_intercepted`), never the snapshot. A strict-mode
+  violation stays a `locator` failure even on a covered page.
+- **`/migrate` never edits the framework itself.** The orchestrator had blocked the ad hosts
+  in the user's config on its own. It now proposes environment fixes to the user, re-runs
+  only after they act, and follows the runner's route or explains why it disagrees.
+- **Rule 28 and its checklist entry** now say a marker names the source selector, so it need
+  not read like the locator under it (`// carried: input[data-qa='email']` above
+  `getByTestId('email')`).
+- **Strategy calls keep their strategy.** The contract copies `By.id("name")`, not a bare
+  `name`, and the locator map gains `source_type: strategy`, so a marker reads
+  `// carried: By.id("name")`.
+- **Batch-level reports** from an agent run on several test cases are saved once, at
+  `reports/<stage>-round-<n>.json`.
+
 ## [0.5.0] — 2026-10-10
 
 Runtime verification, a canonical contract, suite-level planning, and a reference

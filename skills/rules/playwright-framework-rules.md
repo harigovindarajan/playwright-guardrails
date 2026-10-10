@@ -705,6 +705,8 @@ await page.route('**/payments.example.com/charge', route =>
 
 A marked locator is an accepted, temporary exception to Rule 1 and Rule 2: it is reviewed as residual risk that the test run settles, not as a violation. The exception covers only the marker's own line. An unmarked CSS, XPath, test-id, structural, or positional locator is still a fallback that needs the evidence Rule 1 asks for. A carried locator keeps its marker whatever rung it landed on, user-facing ones included: the marker records that the locator was never checked against a page, not that its rung is low. It comes off only when the locator is replaced by a grounded one.
 
+The marker names the selector the locator was translated from, so it need not read like the locator under it: `// carried: input[data-qa='email']` above `getByTestId('email')` is correct when the test-id attribute is `data-qa`.
+
 Upgrading a carried locator replaces it with a grounded one and removes its marker in the same change. Never edit a carried locator by hand while keeping its marker: the marker would then describe a selector the code no longer uses.
 
 #### Good

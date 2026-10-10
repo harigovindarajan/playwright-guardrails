@@ -49,7 +49,11 @@ reports, maps, and the cache line up across rounds:
   version is the **current map**, and every earlier one stays as evidence of what a past round
   ran with.
 - `locator-cache/`: the probe's Tier 2 cache, shared by every test case in this migration
-- `reports/<testcase>/`: every agent's JSON, written by you as `<stage>-round-<n>.json`
+- `reports/<testcase>/`: every agent's JSON for that test case, written by you as
+  `<stage>-round-<n>.json`. An agent you run on several test cases at once (the planner, or a
+  batched drafter, translator, probe, writer, or reviewer) writes one report for the batch:
+  save it once, at `reports/<stage>-round-<n>.json`, and save the runner's reports per test
+  case as above.
 - `runs/<testcase>/round-<n>/`: the runner's run output directory for that round. The runner
   creates one `attempt-<k>/` folder inside it per Playwright invocation, so every run's report,
   log, and traces are kept side by side and nothing is overwritten.
@@ -172,7 +176,11 @@ Run rounds `n = 1, 2, ...` up to the round cap.
    inputs) stops everything: no later round can fix it.
 4. **Route** on the runner's tests:
    - Every test `pass` (or `skipped` by design): **done** for this test case.
-   - Any failure routed `human`: stop for a human with the evidence.
+   - Any failure routed `human`: stop for a human with the evidence. For a failure classified
+     `obstructed` (something covered the page, such as an ad interstitial or a consent banner),
+     say what covered it and propose the environment fix, for example blocking the same ad
+     hosts the probe blocks by default in the user's Playwright config. Re-run only after the
+     user has made the change; never route an obstructed page to the probe or the writer.
    - Any failure routed `probe`: in translate mode with no base URL, stop for a human: there
      is no app to ground against. Otherwise re-run the probe for this contract before the
      next round, with the same output directory and the **next** round's filename pattern (after round 2,
@@ -206,7 +214,12 @@ When every test case is done or stopped, give the user one summary:
 
 ## Rules for the orchestrator
 
-- **Spawn, don't do.** Every contract, map, spec, review, and run comes from its agent.
+- **Spawn, don't do.** Every contract, map, spec, review, and run comes from its agent. That
+  includes the framework: never edit its config, specs, page objects, fixtures, or data
+  yourself, even to fix an environment problem a run exposed. Propose the change to the user
+  and continue only after they make it or tell you to.
+- **Follow the runner's route.** If you think a route is wrong, tell the user why, with the
+  evidence; don't act on your own reading instead.
 - **Don't widen inputs.** Pass each agent exactly what its Invocation Contract lists. In
   particular, the reviewer never receives a locator map or a runner report.
 - **Never handle secret values.** Pass the env file and `storageState` as paths. Don't read
