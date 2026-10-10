@@ -41,7 +41,12 @@ From the migration dir, use these sub-paths **for every round of every test case
 reports, maps, and the cache line up across rounds:
 
 - `contracts/`: drafter output, filename pattern `{testcase}-contract.md`
-- `locator-maps/`: probe output, filename pattern `{testcase}-locator-map.json`
+- `locator-maps/`: probe output, one file per probe run, filename pattern
+  `{testcase}-locator-map.r<n>.json`, where `<n>` is the round the probe ran for (`r1` for the
+  first probe). You fill in `<n>` before passing the pattern, so the probe sees, for example,
+  `{testcase}-locator-map.r2.json`. A re-probe never replaces an earlier map; the highest
+  version is the **current map**, and every earlier one stays as evidence of what a past round
+  ran with.
 - `locator-cache/`: the probe's Tier 2 cache, shared by every test case in this migration
 - `reports/<testcase>/`: every agent's JSON, written by you as `<stage>-round-<n>.json`
 - `runs/<testcase>/round-<n>/`: the runner's run output directory for that round. The runner
@@ -84,7 +89,7 @@ paths, and `contracts/` as the output directory. Persist the manifest.
 ### 3. Probe
 
 Spawn `playwright-dom-probe` with the contract(s), the base URL, the `storageState`,
-`locator-maps/` as the output directory, the output filename pattern above, `locator-cache/`,
+`locator-maps/` as the output directory, the `r1` filename pattern above, `locator-cache/`,
 and the page-objects dir when it exists. Persist the manifest.
 
 **Gate: grounding.** Stop the test case for a human when any of these is true:
@@ -110,7 +115,7 @@ can hold few locators and still mean the journey is broken.
 
 Run rounds `n = 1, 2, ...` up to the round cap.
 
-1. **Write.** Spawn `playwright-test-writer` with the contract, the map, the framework root,
+1. **Write.** Spawn `playwright-test-writer` with the contract, the current map, the framework root,
    and `locator-cache/`. From round 2 on, also pass the previous round's review report and
    run report as its feedback reports. Persist the manifest. A `FAILED` manifest stops the
    test case.
@@ -123,17 +128,18 @@ Run rounds `n = 1, 2, ...` up to the round cap.
      writer gets this report as feedback. Do not run the runner on a spec that failed review.
    - `PASS`: continue to the runner.
 3. **Run.** Spawn `playwright-test-runner` with the spec(s), the framework root,
-   `runs/<testcase>/round-<n>/` as the run output directory, the map and contract, the
+   `runs/<testcase>/round-<n>/` as the run output directory, the current map and contract, the
    `storageState` and its env var name, and the env file with its variable names. Persist the
    report, then append one entry per attempt in the report's `run.attempts` (a `FAILED`
    report can carry attempts too) to
    `runs/index.jsonl`: the test case, the round, the attempt number and folder, the attempt's
-   result, the per-test outcomes (`null` for an `infra-failure` attempt), and the path of the runner report you saved.
+   result, the per-test outcomes (`null` for an `infra-failure` attempt), the locator-map
+   version the run used, and the path of the runner report you saved.
    Never rewrite or remove earlier entries; the index is how a later step finds a test case's
    runs without walking folders. One JSON object per line, for example:
 
    ```json
-   {"testcase": "adds-a-todo-and-completes-it", "round": 2, "attempt": 1, "dir": "runs/adds-a-todo-and-completes-it/round-2/attempt-1", "result": "tests-ran", "outcomes": {"pass": 1, "fail": 0, "flaky": 0, "skipped": 0}, "report": "reports/adds-a-todo-and-completes-it/run-round-2.json"}
+   {"testcase": "adds-a-todo-and-completes-it", "round": 2, "attempt": 1, "dir": "runs/adds-a-todo-and-completes-it/round-2/attempt-1", "result": "tests-ran", "outcomes": {"pass": 1, "fail": 0, "flaky": 0, "skipped": 0}, "map": "locator-maps/adds-a-todo-and-completes-it-locator-map.r2.json", "report": "reports/adds-a-todo-and-completes-it/run-round-2.json"}
    ```
 
    A `FAILED` report (missing Playwright, browsers, env, or
@@ -142,11 +148,13 @@ Run rounds `n = 1, 2, ...` up to the round cap.
    - Every test `pass` (or `skipped` by design): **done** for this test case.
    - Any failure routed `human`: stop for a human with the evidence.
    - Any failure routed `probe`: re-run the probe for this contract before the next round,
-     with the same output directory and filename pattern so the map is replaced, but
-     **without** the page-objects dir and the locator cache, so it re-grounds live instead of
-     replaying the locator that just failed. If the re-probed entry for the failing element is
-     still a `contract-note`, stop for a human: the probe cannot reach it either. Then
-     re-apply the grounding gate and go to the next round.
+     with the same output directory and the **next** round's filename pattern (after round 2,
+     `{testcase}-locator-map.r3.json`), so the earlier map is kept and the new one becomes the
+     current map. Run it **without** the page-objects dir and the locator cache, so it
+     re-grounds live instead of replaying the locator that just failed. If the new map's
+     entry for the failing element is still a `contract-note`, stop for a human: the probe
+     cannot reach it either. Then apply the grounding gate to the new map and go to the next
+     round.
    - Any failure routed `writer`, or any `flaky` test: go to the next round; the writer gets
      this run report as feedback. A flaky test is not done.
 

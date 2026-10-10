@@ -226,6 +226,14 @@ produces the same spec twice. And on a `probe` route, the orchestrator re-runs t
 without its reuse tiers, because the page objects and cache would otherwise hand back the
 very locator that just failed.
 
+**Nothing a round produces is overwritten.** Each runner invocation keeps its report, log,
+and traces in its own `runs/<testcase>/round-<n>/attempt-<k>/` folder, and the locator map is
+versioned by round (`{testcase}-locator-map.r<n>.json`), so a re-probe adds a version instead
+of replacing one. An append-only `runs/index.jsonl` records, for every attempt, the test case,
+the round, the outcome, and the map version it ran with. A failure in round 3 can then be
+compared with what round 1 saw, and later tooling can work from the full history of every
+test case instead of only its last state.
+
 From round 2, the reviewer receives its own prior report, so the `findings_ledger` and its
 reclassification discipline apply across rounds. It never receives the map or a run report.
 

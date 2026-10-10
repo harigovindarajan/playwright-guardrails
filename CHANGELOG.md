@@ -41,7 +41,9 @@ translation.
   probe's grounding ratio (default `0.8`, and any `partial` map stops), routes review and
   runtime failures by the runner's suggested route, and stops for a human after 3 rounds.
   Runs are kept under `runs/<testcase>/round-<n>/attempt-<k>/` and listed in an append-only
-  `runs/index.jsonl`, so every run of every test case stays findable.
+  `runs/index.jsonl`, so every run of every test case stays findable. Locator maps are
+  versioned by round (`{testcase}-locator-map.r<n>.json`): a re-probe adds a version instead of
+  replacing the map, and each index line records which version that run used.
 - **`playwright-test-writer` accepts feedback reports.** A new optional input takes the
   previous round's review and run reports, so a feedback round revises the spec instead of
   regenerating the same one. It also gains a `missing-feedback-report` failure type.
