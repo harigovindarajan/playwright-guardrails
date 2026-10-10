@@ -137,6 +137,33 @@ in a complete-looking contract would be reproduced faithfully by every stage aft
 The drafter never touches the live app and never writes Playwright code, so it needs neither
 a browser nor the rules.
 
+## Translate mode: carry locators over first, ground them later
+
+The probe grounds every locator against the live app before the writer generates anything.
+That is the right default, but it is not always the right first step. An established suite's
+selectors already work against the real app; they only fail Playwright's locator strategy.
+Probing every one of them up front costs time, and it needs a live environment with test data
+and auth before a single test has been migrated.
+
+Translate mode is the alternative first pass. [`playwright-locator-translator`](agents/playwright-locator-translator.md)
+converts each origin locator into the Playwright locator that selects the same thing, with no
+browser, and writes it into the same locator-map shape with `grounding: "translated"`. The
+writer is unchanged except that it marks every translated locator `// carried: <source
+selector>`, and Rule 28 makes a marked locator residual risk the test run settles, not a
+Rule 1 violation. The pipeline runs through to execution, and a test that runs green is
+migrated.
+
+The translator is a separate agent rather than a probe flag because it is a different role
+with different tools: the probe grounds against observed DOM and needs a browser, the
+translator converts text and needs neither a shell nor the app. It translates only what a
+source selector already states. Turning a CSS selector into a role locator because the
+contract's description names a role would be grounding without evidence, so the translator
+leaves that to a later grounding step and records the description for it.
+
+The runner keeps a trace of every run in translate mode. A later release grounds carried
+locators from those traces, offline, and writes an upgraded map version; see
+[#8](https://github.com/harigovindarajan/playwright-guardrails/issues/8).
+
 ## Planning a suite is a separate role from drafting a test
 
 A contract describes one test. A migration is a suite, and the order matters: a suite whose
@@ -258,6 +285,7 @@ plugin rather than left to the session default:
 | --- | --- | --- | --- |
 | `playwright-migration-planner` | `opus` | `high` | Suite-wide dependency resolution and ordering is reasoning, and a wrong order costs every later stage. It runs once per migration, so the cost is paid once. |
 | `playwright-contract-drafter` | `sonnet` | `high` | Synthesizing what an existing test intends, through its helpers, is the input every later stage builds on. |
+| `playwright-locator-translator` | `sonnet` | `medium` | Converting a selector to its equivalent is mostly mechanical, but it reads the target config and must refuse every conversion the source does not support. |
 | `playwright-dom-probe` | `sonnet` | `low` | Mechanical drive → snapshot → ground; scripted and deterministic. |
 | `playwright-test-writer` | `sonnet` | `high` | Generation that must match framework conventions, respect the rules, and act on review and run feedback. |
 | `playwright-test-reviewer` | `sonnet` | `high` | Weighs tradeoffs: classification and the verdict. |
