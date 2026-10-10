@@ -1,6 +1,6 @@
 ---
 name: locator-map
-description: Canonical definition of the locator map — the artifact the probe produces and the writer consumes. Defines the persisted file envelope, the per-entry shape, and every entry-level enum. Preload into the probe and the writer via their skills: field; the reviewer must not preload it. Not for direct human use.
+description: Canonical definition of the locator map — the artifact the probe produces and the writer consumes. Defines the persisted file envelope, the per-entry shape, and every entry-level enum. Preload into the probe, the writer, and the runner via their skills: field; the reviewer must not preload it. Not for direct human use.
 user-invocable: false
 ---
 
@@ -9,7 +9,8 @@ user-invocable: false
 This skill is the **single source** for the locator map's shape. The probe writes maps in
 this shape; the writer reads them. Neither restates it — both preload this skill, so the
 definition is injected into each agent's context at startup and there is no second copy to
-keep in sync.
+keep in sync. The runner also preloads it, read-only, to tell a probe fault from a writer
+fault when a locator fails at runtime.
 
 The **reviewer does not preload this skill, and must not.** It sees only the spec and the
 contract — never the locator map — so its verdict stays unbiased by how the probe resolved
@@ -17,7 +18,8 @@ a locator. See [`DESIGN.md`](../../DESIGN.md).
 
 This skill defines **what the artifact is**. How to *produce* it (driving, grounding,
 persistence, filename patterns, coverage accounting) belongs to the probe. How to *consume*
-it (resolution order, fallback handling, reporting) belongs to the writer.
+it (resolution order, fallback handling, reporting) belongs to the writer. How to *diagnose* a runtime failure against it belongs to
+the runner.
 
 ## File envelope
 
@@ -100,5 +102,5 @@ cache is in use so an entry is addressable.
   here.
 - **Never fall back to a remembered shape.** If what you recall disagrees with this document,
   this document wins. The case where this content is absent entirely is caught by the static
-  failure gates in the probe and the writer, not here — a guard cannot live inside the content
+  failure gates in the probe, the writer, and the runner, not here — a guard cannot live inside the content
   whose absence it guards.

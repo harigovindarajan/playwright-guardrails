@@ -1,6 +1,7 @@
-# Contract: TC2 — Login with correct email and password
+# Contract: Login with correct email and password
 
-Source: `selenium-source-reference/tests/LoginTest.java` (Feature "User", CRITICAL).
+- Testcase: `tc-002-login-user`
+- Source: `selenium-source-reference/tests/LoginTest.java` (Selenium, TC2, Feature "User", CRITICAL)
 
 ## Test intent
 
@@ -14,21 +15,21 @@ logged in under their account name.
 
 ## Test steps
 
-1. **direct** — Navigate to `/`. Verify the home page is visible.
-2. **driven** — Click "Sign in". Verify "Sign in to your account" is visible.
-3. **driven** — Enter the existing account's email and password, click "Sign in".
+1. **direct**: Navigate to `/`. Verify the home page is visible.
+2. **driven**: Click "Sign in". Verify "Sign in to your account" is visible.
+3. **driven**: Enter the existing account's email and password, click "Sign in".
    Verify the header shows "Logged in as &lt;name&gt;" matching the account name.
 
 ## Test data setup / cleanup
 
 - **Existing user** from `resources/testData/ExistingUser.json` (name/email/
-  password). In Playwright these are credential-typed and MUST come from
-  `process.env.*` (Rule 15) — see `EXISTING_USER_*`. No cleanup (read-only login;
+  password). Credential-typed: in Playwright these MUST come from
+  `process.env.*` (Rule 15), see `EXISTING_USER_*`. No cleanup (read-only login;
   the account is not modified).
 
 ## Origin locators
 
-| Element | Selenium selector | Page state | User-facing description |
+| Element | Source selector | Page state | User-facing description |
 |---|---|---|---|
 | home hero image | `div[class='hero-banner'] img` | home (anon) | image, alt "seasonal promotion" |
 | Sign in nav link | `a[href='/signin']` | home (anon) | link "Sign in" |
@@ -43,3 +44,15 @@ logged in under their account name.
 - Home page hero is visible.
 - "Sign in to your account" is visible.
 - The header username equals the existing account's name.
+
+## Risk annotations
+
+| Risk | Where | Note |
+|---|---|---|
+| `shared-state` | preconditions | Every run signs in as the same existing account. |
+
+## Open questions
+
+- **non-blocking**: The source reads the username from the 10th header list item.
+  Is "Logged in as" always the 10th item, or does its position depend on the
+  account's role?
