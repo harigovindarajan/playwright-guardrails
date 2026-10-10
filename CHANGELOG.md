@@ -17,8 +17,10 @@ translation.
   It reports each test as `pass`, `fail`, `flaky`, or `skipped`, and gives each failure a
   classification, redacted evidence, and a suggested route to the probe, the writer, or a
   human. Playwright's `--retries` (default 1) produces the flaky signal; the agent itself
-  reruns at most once, and only for infrastructure failures before any test body ran. It
-  preloads the locator-map skill to route locator failures; the reviewer still does not.
+  reruns at most once, and only for infrastructure failures before any test body ran. Every
+  Playwright invocation writes into its own `attempt-<k>/` folder, so a rerun never
+  overwrites earlier evidence. It preloads the locator-map skill to route locator failures;
+  the reviewer still does not.
 - **New `contract` skill.** The contract's shape (sections, `direct`/`driven`/`destructive`
   step markers, the origin-locators table, the risk vocabulary, and `blocking`/
   `non-blocking` open questions) now lives once, in `skills/contract/`. The probe, writer,
@@ -38,6 +40,8 @@ translation.
   follows to spawn the agents in order. It stops on `blocking` open questions, gates on the
   probe's grounding ratio (default `0.8`, and any `partial` map stops), routes review and
   runtime failures by the runner's suggested route, and stops for a human after 3 rounds.
+  Runs are kept under `runs/<testcase>/round-<n>/attempt-<k>/` and listed in an append-only
+  `runs/index.jsonl`, so every run of every test case stays findable.
 - **`playwright-test-writer` accepts feedback reports.** A new optional input takes the
   previous round's review and run reports, so a feedback round revises the spec instead of
   regenerating the same one. It also gains a `missing-feedback-report` failure type.

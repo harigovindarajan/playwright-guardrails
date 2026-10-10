@@ -44,7 +44,10 @@ reports, maps, and the cache line up across rounds:
 - `locator-maps/`: probe output, filename pattern `{testcase}-locator-map.json`
 - `locator-cache/`: the probe's Tier 2 cache, shared by every test case in this migration
 - `reports/<testcase>/`: every agent's JSON, written by you as `<stage>-round-<n>.json`
-- `runs/<testcase>/round-<n>/`: the runner's run output directory for that round
+- `runs/<testcase>/round-<n>/`: the runner's run output directory for that round. The runner
+  creates one `attempt-<k>/` folder inside it per Playwright invocation, so every run's report,
+  log, and traces are kept side by side and nothing is overwritten.
+- `runs/index.jsonl`: your append-only index of every run attempt, one JSON line each (see below)
 
 Create these directories (and each round's `runs/` directory) before the agent that needs them
 runs. The drafter, the probe, and the runner require their output directories to exist and
@@ -122,8 +125,19 @@ Run rounds `n = 1, 2, ...` up to the round cap.
 3. **Run.** Spawn `playwright-test-runner` with the spec(s), the framework root,
    `runs/<testcase>/round-<n>/` as the run output directory, the map and contract, the
    `storageState` and its env var name, and the env file with its variable names. Persist the
-   report. A `FAILED` report (missing Playwright, browsers, env, or inputs) stops everything:
-   no later round can fix it.
+   report, then append one entry per attempt in the report's `run.attempts` (a `FAILED`
+   report can carry attempts too) to
+   `runs/index.jsonl`: the test case, the round, the attempt number and folder, the attempt's
+   result, the per-test outcomes (`null` for an `infra-failure` attempt), and the path of the runner report you saved.
+   Never rewrite or remove earlier entries; the index is how a later step finds a test case's
+   runs without walking folders. One JSON object per line, for example:
+
+   ```json
+   {"testcase": "adds-a-todo-and-completes-it", "round": 2, "attempt": 1, "dir": "runs/adds-a-todo-and-completes-it/round-2/attempt-1", "result": "tests-ran", "outcomes": {"pass": 1, "fail": 0, "flaky": 0, "skipped": 0}, "report": "reports/adds-a-todo-and-completes-it/run-round-2.json"}
+   ```
+
+   A `FAILED` report (missing Playwright, browsers, env, or
+   inputs) stops everything: no later round can fix it.
 4. **Route** on the runner's tests:
    - Every test `pass` (or `skipped` by design): **done** for this test case.
    - Any failure routed `human`: stop for a human with the evidence.
@@ -153,7 +167,7 @@ When every test case is done or stopped, give the user one summary:
 - per test case: done, or stopped with the stage, the reason, and the report that shows it;
 - the specs and files the writer created or modified;
 - every `flaky` test and every non-blocking open question still standing;
-- the paths of `reports/` and `runs/`.
+- the paths of `reports/`, `runs/`, and `runs/index.jsonl`.
 
 ## Rules for the orchestrator
 
