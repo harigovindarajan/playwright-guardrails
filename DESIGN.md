@@ -86,6 +86,44 @@ should receive a counts-only summary — enough to flag an unobserved page, not 
 ratify the writer's locator choices — is an open question tracked in
 [#3](https://github.com/harigovindarajan/playwright-guardrails/issues/3).
 
+## Runtime verification, and why the runner may read the map
+
+Nothing upstream executes a spec. The writer has no shell and the reviewer reads files, so a
+spec can earn a PASS and still fail the first time it runs. The reviewer already defers
+anything it can only confirm by running the test to a `verify` stage; that stage is
+[`playwright-test-runner`](agents/playwright-test-runner.md). It runs the specs with the
+project's own Playwright install, reads the JSON report, and returns a per-test outcome. For
+each failure it gives a classification, the evidence behind it, and a suggested route: back
+to the probe, back to the writer, or to a human. It is run-only, the way the reviewer is
+review-only. It never edits a file, never installs anything, and never touches
+`playwright.config`; every option goes on the command line.
+
+**Two retry layers, kept apart.** Playwright retries a failing test once by default, passed
+as `--retries` so the result does not depend on the config. That one retry is what makes
+Playwright report `flaky`, and the runner reports a flaky test as flaky, never as a pass. The
+runner itself reruns the whole invocation at most once, and only when infrastructure failed
+before any test body ran. Letting the agent rerun failing tests would stack a second retry
+layer on the first and hide exactly the flakes the first layer exists to surface.
+
+**The runner preloads the locator map; the reviewer still doesn't.** The reviewer is blind
+to the map so that its judgment of the writer's locator choices is not anchored on the
+probe's. The runner makes no such judgment. Its evidence is what the runtime did, and the map
+cannot change that. What the map does change is the route. A locator that fails at runtime
+is a probe fault when the map grounded it from a snapshot that no longer matches, or when the
+map only carried it as an unverified `contract-note`. It is a writer fault when the spec did
+not use the locator the map grounded. Without the map those cases are indistinguishable, and
+every locator failure would have to go to a human, which defeats the point of routing. So the
+map path is an optional runner input, the runner preloads the shape like the probe and the
+writer do, and without a map it routes locator failures to a human rather than guessing.
+
+The cost is that the runner's routing now trusts the map's record of what was grounded. If a
+map is wrong about its own provenance, the runner will route to the wrong stage. That is a
+bounded cost: a misrouted failure comes back on the next round, and the orchestrator's round
+cap stops the loop.
+
+**The runner does not preload the rules.** It reports outcomes, not rule adherence, and
+loading the full rule set would invite it to issue findings that belong to the reviewer.
+
 ## Mechanical vs. reasoning roles
 
 The probe and writer are **mechanical**: the probe extracts (drive → snapshot →
@@ -101,6 +139,7 @@ rather than left to the session default:
 | `playwright-dom-probe`     | `low`    | Mechanical drive → snapshot → ground; scripted and deterministic. |
 | `playwright-test-writer`   | `medium` | Mechanical generation with some convention-matching.         |
 | `playwright-test-reviewer` | `high`   | The only role that weighs tradeoffs (classification, verdict). |
+| `playwright-test-runner`   | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
 
 The session advisor is a separate, harness-level lever the plugin cannot pin. For
 mechanical probe/writer loops, downgrade or disable it via a project-level

@@ -98,7 +98,7 @@ Non-blocking findings include:
 - Improvements that are allowed by the rules/checklist but would improve readability or maintainability.
 - Minor clarity suggestions.
 - Reviewer observations not explicitly required by the rule/checklist files.
-- Residual risk whose resolution is deferred to the `verify` stage — anything you would describe as "needs runtime confirmation", "confirm at verify time", "residual risk", or that can only be proven by running the test.
+- Residual risk whose resolution is deferred to the `verify` stage (`playwright-test-runner`, which executes the spec after review) — anything you would describe as "needs runtime confirmation", "confirm at verify time", "residual risk", or that can only be proven by running the test.
 
 **Verify-owned findings are Non-blocking by construction.** A finding whose own stated resolution is runtime/verify-time confirmation, or that you label residual or non-blocking, MUST be recorded as `Non-blocking`. It may not be recorded as `Blocking`, and it may not drive a `FAIL`, even when it concerns an important risk — the `verify` stage is the authoritative runtime check, so blocking the build on what `verify` will decide is double-gating. If the only findings are verify-owned, the verdict is `PASS` with those findings attached as non-blocking notes. This does **not** weaken genuine blocking findings: a rule/checklist violation provable from the reviewed artifacts alone — an unjustified fallback locator, an uncovered contract step, an assertion that does not prove the outcome — stays `Blocking` exactly as before, because it does not require running the test to establish.
 
