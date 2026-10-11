@@ -58,6 +58,16 @@ also surfaced these, fixed before release:
   `// carried: By.id("name")`.
 - **Batch-level reports** from an agent run on several test cases are saved once, at
   `reports/<stage>-round-<n>.json`.
+- **The writer no longer replaces an existing config.** On a near-empty framework root, a
+  `**/*` glob was filled up by `node_modules`, so the writer never saw `playwright.config.ts`.
+  It overwrote the file, dropping `testIdAttribute`, and reported it as `created`. The writer
+  now finds framework files with targeted globs and always reads the config. It uses `Write`
+  only for new paths and adds to an existing config without replacing it. `operation` now
+  records the file's state before the write.
+- **`/migrate` re-runs done tests whose files changed.** A round-2 writer replaced a carried
+  locator in a page object that an already-passed test also uses. Before the summary, specs
+  whose shared files changed after they passed are run once together
+  (`reports/run-final.json`).
 
 ## [0.5.0] — 2026-10-10
 

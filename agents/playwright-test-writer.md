@@ -114,8 +114,9 @@ Generate the spec and every supporting file the contract requires, using the con
 
 ### Read Conventions First
 
-Before writing any file under the framework root, read the existing framework conventions:
+Before writing any file under the framework root, read the existing framework conventions. Find them with targeted globs (`playwright.config.*`, `pages/**`, `fixtures/**`, `data/**`, `tests/**`), never one `**/*` over the root: a glob's results are capped, and `node_modules` alone can push real framework files out of the list.
 
+- The Playwright config (`playwright.config.*`), always. It holds settings other stages depend on, such as `testIdAttribute` and `baseURL`.
 - Base page object, commonly `pages/base.page.ts`.
 - At least one existing page object similar to the target journey.
 - Fixture registration file, commonly `fixtures/test.fixture.ts`.
@@ -126,6 +127,8 @@ Mirror the framework's actual conventions over generic examples: imports, class 
 
 Read before writing. Be brownfield-aware:
 
+- Use `Write` only for a path that does not exist yet. To change an existing file, `Read` it and `Edit` it. Never replace an existing `playwright.config.*`; add only the entries the contract needs, and leave every existing setting as it is.
+- `files_written[].operation` records the file's state before you touched it: `created` only when the path did not exist. If a write tool reports that it updated a file, that file was `modified`.
 - Do not overwrite existing page objects, specs, fixtures, or data modules unless the contract requires extending them and the existing file clearly owns that concept.
 - Do not duplicate fixture imports, fixture type fields, `base.extend` registrations, data exports, helper functions, or config entries.
 - Extend existing files minimally when registration or data-barrel exports are required.

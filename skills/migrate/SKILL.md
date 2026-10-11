@@ -205,6 +205,14 @@ and none of those gets better with a fourth pass at the spec.
 
 ### 5. Report
 
+**Re-run done tests whose files changed.** A test case is proven only against the files it ran
+with. If a later writer manifest modified a file a done test case's spec uses (a shared page
+object, fixture, data module, or the config), that test case is no longer proven. Before the
+summary, spawn the runner once over all such specs together, with `runs/final/` as the run
+output directory, and save its report as `reports/run-final.json`. Index its attempts like any
+other run, with `"testcase": "final"`. A failure here goes in the summary with its route; it
+does not start another round.
+
 When every test case is done or stopped, give the user one summary:
 
 - per test case: done, or stopped with the stage, the reason, and the report that shows it;
