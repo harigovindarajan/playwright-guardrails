@@ -170,7 +170,7 @@ Feedback rules:
 
 ## rule_id attribution
 
-Each finding that cites `playwright-framework-rules.md` **must** include a `rule_id` field set to that rule's canonical number (integer 1–27, matching the `### Rule N` heading). Findings that are checklist-only (citing `playwright-framework-review-checklist.md`) or contract-coverage failures (citing the contract file) must omit `rule_id` or set it to `null`. This lets downstream scoring attribute rule flags to specific rules without parsing prose.
+Each finding that cites `playwright-framework-rules.md` **must** include a `rule_id` field set to that rule's canonical number (integer 1–28, matching the `### Rule N` heading). Findings that are checklist-only (citing `playwright-framework-review-checklist.md`) or contract-coverage failures (citing the contract file) must omit `rule_id` or set it to `null`. This lets downstream scoring attribute rule flags to specific rules without parsing prose.
 
 **Before returning, validate every finding:** if the finding is about a numbered framework rule, `rule_id` must be an integer. Do not rely on prose mentions like "Rule 17" or citations like "playwright-framework-rules.md (Rule 17)". The `rule_id` field itself must be populated.
 
@@ -237,7 +237,7 @@ Allowed enum values:
 - `contract_coverage[].test_data_setup`: `Covered`, `Missing`, or `Partial`
 - `contract_coverage[].result`: `PASS` or `FAIL`
 - `findings[].severity`: `Blocking` or `Non-blocking`
-- `findings[].rule_id`: integer 1–27 or `null` (present only on rule-based findings; omitted or `null` for checklist-only or contract-coverage findings)
+- `findings[].rule_id`: integer 1–28 or `null` (present only on rule-based findings; omitted or `null` for checklist-only or contract-coverage findings)
 - `gate_decision.result`: `PASS` or `FAIL`
 - `rule_checklist_feedback[].source_gap`: `Rule` or `Checklist`
 

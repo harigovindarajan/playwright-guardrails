@@ -52,11 +52,11 @@ expected finding.
 
 ## Changing an agent
 
-The six agents live in [`agents/`](agents/). Each is a single-role sub-agent that
+The seven agents live in [`agents/`](agents/). Each is a single-role sub-agent that
 loads its canonical sources itself via its frontmatter `skills:` field — don't pass rule
 paths in as inputs, and keep each agent to its one role (the planner never drafts, the
-drafter never writes Playwright code, the probe never generates, the writer never verdicts,
-the reviewer never edits, the runner never fixes). Per-role reasoning `effort` is
+drafter never writes Playwright code, the probe never generates, the translator never opens
+a browser, the writer never verdicts, the reviewer never edits, the runner never fixes). Per-role reasoning `effort` is
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
@@ -64,7 +64,7 @@ Don't restate a shared source inside an agent — not field names, not enum valu
 text. An agent describes how it *produces* or *consumes* the artifact; the skill describes
 what the artifact *is*. When you change the locator map's shape, change
 [`skills/locator-map/SKILL.md`](skills/locator-map/SKILL.md) and check that the probe, the
-writer, and the runner still hold up against it. When you change the contract's shape or the
+translator, the writer, and the runner still hold up against it. When you change the contract's shape or the
 risk vocabulary, change [`skills/contract/SKILL.md`](skills/contract/SKILL.md) and check every
 agent that preloads it.
 
@@ -78,7 +78,7 @@ agent that preloads it.
    ```bash
    claude --plugin-dir .
    ```
-   Check that the six agents appear in `/context` under Custom Agents and that `/migrate`
+   Check that the seven agents appear in `/context` under Custom Agents and that `/migrate`
    shows in the slash-command menu. The `rules`, `contract`, and `locator-map` skills are
    preload-only (`user-invocable: false`), so none of them shows there. Confirm each agent's
    `skills:` frontmatter matches this table, and in particular that the reviewer does not
@@ -89,6 +89,7 @@ agent that preloads it.
    | planner | `contract` |
    | drafter | `contract` |
    | probe | `rules`, `locator-map`, `contract` |
+   | translator | `rules`, `locator-map`, `contract` |
    | writer | `rules`, `locator-map`, `contract` |
    | reviewer | `rules`, `contract` |
    | runner | `locator-map`, `contract` |

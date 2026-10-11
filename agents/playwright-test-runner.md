@@ -26,6 +26,7 @@ This is your function signature for the pipeline. The caller passes **only**:
 - *(optional)* One or more **contract** file paths, one per spec. Used only to tell an assertion the spec got wrong from an app that disagrees with the contract (see Failure routing).
 - *(optional)* **`retries`**: Playwright's per-test retry count for this run. Default `1`. Passed as `--retries`, which overrides whatever the config sets.
 - *(optional)* **Project names** to run, passed as `--project`. Default: every project the config defines.
+- *(optional)* **`trace`**: a Playwright trace mode (`on`, `retain-on-failure`, `on-first-retry`, or `off`), passed as `--trace`, which overrides the config. When omitted, nothing is passed and the config decides. Traces land in the attempt folder's artifacts and are reported by path (see Run Report).
 
 You do not receive rules or checklist paths, and you do not need them: you report what the runtime did, not whether the code follows the rules.
 
@@ -60,6 +61,7 @@ Your tools include a shell. Treat this section as a hard boundary.
 - Playwright itself, and the shell redirect that captures its log, write only inside the current attempt folder: the report via `PLAYWRIGHT_JSON_OUTPUT_NAME`, artifacts via `--output`, and the log via `> <attempt-dir>/run.log 2>&1`. Those, plus creating the attempt folder, are the only writes a run makes. Never write into, delete, or empty an earlier attempt folder.
 - **Never print an env value or `storageState` contents.** Source the env file inside the shell that runs the command (`set -a; . <env-file>; set +a; ...`) so values never appear in a command string. Check a required variable by name only, for example `[ -n "${NAME:-}" ] && echo NAME=set || echo NAME=unset`. Never `cat`, `Read`, `echo`, `env`, or `printenv` the env file, the variables, or the `storageState` file. Check the `storageState` file with `test -r` and nothing more.
 - **Never read the report or the log raw.** Reporter output can echo secrets back: a `toHaveValue` mismatch prints the received value, and webServer logs print whatever the app logs. Read both only through the redacting filter, which replaces the value of every required variable with `[REDACTED:<NAME>]` before any of it reaches your context. Run it in the same shell that sourced the env file so it can see the values without you seeing them. Quote evidence only from the filter's output.
+- **Never open a trace or an error-context file.** A trace holds DOM snapshots, network bodies, and screenshots of the run, and Playwright's `error-context.md` holds the page snapshot at the failure, both unredacted. Report trace files by path only. The filter reads the error-context file for you and returns only yes/no obstruction flags (see Failure classification), never its content.
 - If redacted evidence still shows something that looks like a credential, token, cookie, or personal data the filter could not know about (a value from a data module, a header), replace it with a generic description in your report, for example `received value: <account email>`, and record a `redaction` risk.
 
 The redacting filter. Pass the attempt folder and the comma-separated required names. It prints a compact JSON summary of the report (stats plus every test's attempts, error messages, and locations), followed by the redacted tail of `run.log`:
@@ -72,6 +74,19 @@ const red = s => { s = String(s ?? "").replace(/\u001b\[[0-9;]*m/g, "");
   for (const n of names) { const v = process.env[n]; if (v && v.length >= 3) s = s.split(v).join(`[REDACTED:${n}]`); }
   return s; };
 const out = { stats: null, tests: [], log_tail: "" };
+// Yes/no flags only: whether the page was covered when the attempt failed. No snapshot text leaves the filter.
+const obstruction = a => {
+  const f = { root_hidden: false, dialog_open: false, action_intercepted: false };
+  for (const e of a.errors || []) if (/intercepts pointer events/.test(String(e.message))) f.action_intercepted = true;
+  const ctx = (a.attachments || []).find(x => x.name === "error-context" && x.path);
+  if (ctx) try {
+    const snap = fs.readFileSync(ctx.path, "utf8").split("# Page snapshot")[1] || "";
+    const first = snap.split("\n").find(l => /^\s*- /.test(l)) || "";
+    f.root_hidden = /\[aria-hidden\]/.test(first);
+    f.dialog_open = /^\s{0,6}- (dialog|alertdialog)\b/m.test(snap);
+  } catch {}
+  return f;
+};
 try {
   const r = JSON.parse(fs.readFileSync(`${dir}/results.json`, "utf8"));
   out.stats = r.stats;
@@ -79,7 +94,9 @@ try {
       file: sp.file, line: sp.line, title: red(sp.title), project: t.projectName, status: t.status,
       expected_status: t.expectedStatus,
       attempts: (t.results || []).map(a => ({ retry: a.retry, status: a.status, duration: a.duration,
-        errors: (a.errors || []).map(e => ({ message: red(e.message).slice(0, 3000), location: e.location })) })) });
+        errors: (a.errors || []).map(e => ({ message: red(e.message).slice(0, 3000), location: e.location })),
+        traces: (a.attachments || []).filter(x => x.name === "trace" && x.path).map(x => x.path),
+        obstruction: obstruction(a) })) });
     for (const c of s.suites || []) walk(c); };
   for (const s of r.suites || []) walk(s);
   out.report_errors = (r.errors || []).map(e => red(e.message).slice(0, 3000));
@@ -136,7 +153,7 @@ Run every supplied spec in **one** Playwright invocation from the framework root
 cd <framework-root> && set -a && . <env-file> && set +a && \
 <STORAGE_VAR>=<storageState> PLAYWRIGHT_JSON_OUTPUT_NAME=<attempt-dir>/results.json \
 npx --no-install playwright test <spec> [<spec> ...] [--config=<config>] [--project=<name> ...] \
-  --reporter=json --retries=<retries> --output=<attempt-dir>/artifacts \
+  --reporter=json --retries=<retries> [--trace=<trace>] --output=<attempt-dir>/artifacts \
   > <attempt-dir>/run.log 2>&1; echo "exit=$?"
 ```
 
@@ -160,9 +177,10 @@ Classify every `fail` and every `flaky` test (using its failing attempt) into ex
 - `assertion`: an `expect` ran against a resolved element or value and received something other than expected (`Expected` / `Received`).
 - `test-data`: the failure traces to data, not UI: a setup API call returned an error, a record the test needs was absent or already present, or a unique-value collision.
 - `auth-env`: the run landed on a login page or got a 401/403, `storageState` was rejected or expired, or the app or webServer failed on missing configuration.
+- `obstructed`: something covered the page when the attempt failed, so the test never saw it: the filter's `obstruction` flags show the page root hidden from the accessibility tree (`root_hidden`), an open dialog (`dialog_open`), or another element intercepting the action (`action_intercepted`). Typical causes are an ad interstitial, a consent banner, or a modal the source suite never had to dismiss.
 - `other`: anything that fits none of the above, including a syntax or import error in the spec.
 
-When two classes fit, pick the one closest to the root cause: a test that times out because it was redirected to a login page is `auth-env`, not `timing`.
+When two classes fit, pick the one closest to the root cause: a test that times out because it was redirected to a login page is `auth-env`, not `timing`. An obstruction outranks `locator` and `timing` only for failures a covered page can cause: when any `obstruction` flag is set on the failing attempt and the error is "element(s) not found", "not visible", an intercepted action, or a timeout waiting for one, classify it `obstructed`; sending it to the probe or the writer would change locators that were never the problem. A strict-mode violation (`resolved to N elements`) is still `locator`, obstruction or not: an element count does not depend on what covers the page. Mention the obstruction in its `route_reason` and add an `env` risk, since the next run will hit the overlay too.
 
 Every classification carries evidence: the redacted error message (trimmed to the relevant lines), the failing locator when there is one, and the spec location as `file:line` from the report.
 
@@ -174,12 +192,14 @@ Each classified failure gets a suggested route: `probe`, `writer`, or `human`. T
   - The spec used a locator that is not the entry's `replacement.locator` → `writer` (the writer did not carry the grounded locator through).
   - The entry is a `contract-note` → `probe` (the locator was never grounded; re-probe with whatever the probe was missing, such as a `storageState`). If the entry's `fallback_reason` says the state is reachable only through a destructive step, route `human` instead: the probe will never go there.
   - The entry is a `live-snapshot` and the spec used it as written → `probe` (the snapshot no longer matches the runtime DOM; re-ground).
+  - The entry is `translated` and the spec carried it as written → `probe` (the source selector does not hold in Playwright; it needs grounding).
   - No entry matches the failing element → `writer`.
 - `locator`, without a locator map → `human`. You cannot tell whose locator it was.
 - `timing` → `writer`. Readiness belongs to the page objects the writer generates.
 - `assertion` → `writer` when the spec's expectation differs from the contract's expected outcome; `human` when the spec matches the contract and the app disagrees, since that is either an app defect or a stale contract and no pipeline stage can fix it. Without a contract, route `human`.
 - `test-data` → `writer` when the spec or its data modules own the data lifecycle; `human` when the data must already exist in the environment.
 - `auth-env` → `human`.
+- `obstructed` → `human`. Name the flag that fired and, when the error or call log shows it, what covered the page. Fixing it is an environment change (blocking an ad host, dismissing a banner in a fixture) that belongs to the user, not to any stage.
 - `other` → `human`, except a syntax or import error in a generated file, which routes to `writer`.
 
 Give a one-sentence `route_reason` that names the evidence the route rests on.
@@ -218,6 +238,7 @@ Use this schema:
       "project": "chromium",
       "outcome": "fail",
       "attempts": 2,
+      "traces": ["path/to/run-output/attempt-1/artifacts/login-user-can-sign-in-chromium/trace.zip"],
       "failure": {
         "classification": "locator",
         "evidence": {
@@ -264,7 +285,7 @@ Allowed enum values:
 - `status`: `completed` or `FAILED`
 - `tests[].outcome`: `pass`, `fail`, `flaky`, or `skipped`
 - `run.attempts[].result`: `tests-ran` or `infra-failure` (no test results, rerun or stopped on)
-- `tests[].failure.classification`: `locator`, `timing`, `assertion`, `test-data`, `auth-env`, or `other`
+- `tests[].failure.classification`: `locator`, `timing`, `assertion`, `test-data`, `auth-env`, `obstructed`, or `other`
 - `tests[].failure.route`: `probe`, `writer`, or `human`
 - `failure.type`: `missing-locator-map-shape`, `missing-contract-shape`, `missing-spec`, `missing-framework-root`, `missing-playwright`, `missing-browsers`, `missing-output-dir`, `missing-env`, `missing-storage-state`, `missing-locator-map`, `missing-contract`, or `infra-failure`
 - `assumptions_and_risks[].type`: `flaky`, `redaction`, `agent-rerun`, `env`, or `other`
@@ -273,6 +294,7 @@ Empty-state and population rules:
 
 - In a `FAILED` report, `run` is `null` when no attempt folder was created, and otherwise carries `attempts` (and the other `run` fields that are known) so the kept evidence stays findable. An `infra-failure` always has attempts.
 - `run.attempts` lists every attempt folder this invocation created, in order; `run.exit_code`, `report_path`, and `artifacts_dir` describe the last one. An `infra-failure` attempt carries its redacted cause in `reason`.
+- `tests[].traces` lists the trace files Playwright attached to the test's attempts in the last attempt folder, by path. Return `[]` when tracing was off or the test produced none.
 - `tests[].failure` is present for `fail` and `flaky` outcomes and `null` for `pass` and `skipped`. On a `flaky` test it describes the failing attempt.
 - `tests[].failure.locator_map_entry` names the map file and the entry's element when one was used for routing; otherwise `null`.
 - Every `flaky` test also gets a `flaky` entry in `assumptions_and_risks`, so a flake is never mistaken for a clean pass by a caller that only reads `summary`.

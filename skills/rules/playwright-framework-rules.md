@@ -16,7 +16,7 @@
 - **[Authentication & State Reuse](#authentication-and-state-reuse-rules)** — Rule 15: Reuse login via storageState + setup project · Rule 16: Isolate auth state per role and worker
 - **[Reliability & Determinism](#reliability-and-determinism-rules)** — Rule 17: Never hard-wait or networkidle · Rule 18: No conditional logic in test bodies · Rule 19: Trust auto-waiting, never force · Rule 20: Parallel-safe; declare serial explicitly
 - **[Test Isolation & Data Setup](#test-isolation-and-data-setup-rules)** — Rule 21: Prefer API setup/teardown · Rule 22: Data from builders/modules, not inline literals
-- **[Scaling & Robustness](#scaling-and-robustness-rules)** — Rule 23: Compose component objects · Rule 24: Narrow lists with filter() · Rule 25: Soft assertions and polling · Rule 26: Tag and gate declaratively · Rule 27: Mock only what you don't own
+- **[Scaling & Robustness](#scaling-and-robustness-rules)** — Rule 23: Compose component objects · Rule 24: Narrow lists with filter() · Rule 25: Soft assertions and polling · Rule 26: Tag and gate declaratively · Rule 27: Mock only what you don't own · Rule 28: Mark carried-over locators
 - [Out of Current Scope](#out-of-current-scope)
 - [Example Implementation](#example-implementation)
 - [Official Playwright References](#official-playwright-references)
@@ -696,6 +696,35 @@ test('user can checkout', { tag: ['@smoke', '@checkout'] }, async ({ checkoutPag
 await page.route('**/payments.example.com/charge', route =>
   route.fulfill({ status: 200, json: { id: 'ch_test', status: 'succeeded' } }),
 );
+```
+
+### Rule 28: Mark Carried-Over Locators
+
+> MUST: A locator carried over from the source suite without being checked against the live page is marked on the line that defines it with `// carried: <source selector>`, the source selector copied verbatim.
+> WHY: In a translate-first migration, a suite's existing selectors are carried into Playwright so every test reaches a running state before anyone spends time grounding locators. Those locators have not been through the Rule 1 ladder. The marker says so in the code itself, so a reader, a reviewer, and a later upgrade step can all tell a deliberate carry-over from an unjustified fallback.
+
+A marked locator is an accepted, temporary exception to Rule 1 and Rule 2: it is reviewed as residual risk that the test run settles, not as a violation. The exception covers only the marker's own line. An unmarked CSS, XPath, test-id, structural, or positional locator is still a fallback that needs the evidence Rule 1 asks for. A carried locator keeps its marker whatever rung it landed on, user-facing ones included: the marker records that the locator was never checked against a page, not that its rung is low. It comes off only when the locator is replaced by a grounded one.
+
+The marker names the selector the locator was translated from, so it need not read like the locator under it: `// carried: input[data-qa='email']` above `getByTestId('email')` is correct when the test-id attribute is `data-qa`.
+
+Upgrading a carried locator replaces it with a grounded one and removes its marker in the same change. Never edit a carried locator by hand while keeping its marker: the marker would then describe a selector the code no longer uses.
+
+#### Good
+
+```ts
+// carried: input[name='email']
+this.emailInput = page.locator("input[name='email']");
+this.submitButton = page.getByRole('button', { name: 'Sign in' });
+```
+
+#### Avoid
+
+```ts
+// unmarked: reads as an unjustified fallback
+this.emailInput = page.locator("input[name='email']");
+// marker no longer matches the code
+// carried: input[name='email']
+this.emailInput = page.getByLabel('Email');
 ```
 
 ## Out of Current Scope

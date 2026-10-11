@@ -233,6 +233,7 @@ Write one JSON file per contract into the caller-supplied output directory. The 
 - `grounded` — entries with `grounding: "live-snapshot"`, any tier.
 - `grounded_this_run` — entries with `tier_source: "live"`, i.e. freshly driven in this run.
 - `contract_note` — entries with `grounding: "contract-note"`. `grounded + contract_note` equals `entries.length`.
+- `translated`: always `0`. The probe grounds or records a `contract-note`; it never emits a translated entry.
 - `unobserved_states` — the page states where *every* entry is a `contract-note`. Empty when none.
 
 The two grounded counts differ on purpose. Tier 1 (page-object) and Tier 2 (cache) entries are emitted with `grounding: "live-snapshot"` **without driving this run**, so a map served entirely from cache would otherwise report full coverage and zero fallbacks. `grounded_this_run` is what distinguishes a freshly observed map from a replayed one; gate authors who care about live verification should read that number, not `grounded`.

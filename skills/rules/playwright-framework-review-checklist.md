@@ -38,6 +38,8 @@ Each finding should include:
 - If CSS is used only for scoping, is it reviewed as a structural fallback rather than harmless plumbing? See Rule 1.
 - If `.first()`, `.last()`, or `.nth()` is used, is there evidence that semantic disambiguation with role/name, text, labels, `filter({ hasText })`, or `filter({ has })` was not possible? See Rules 1 and 24.
 - Does the chosen locator prove user-facing intent rather than only DOM uniqueness? See Rule 1.
+- Is every locator carried over from the source suite marked `// carried: <source selector>` on the line that defines it, with the selector verbatim? A marked locator is residual risk the test run settles, not a Rule 1 violation; an unmarked fallback is still judged under Rule 1. See Rule 28.
+- Does any `// carried:` marker sit on a locator that is not the translation of its source selector (a locator edited by hand, or replaced by a grounded one, with the marker left behind)? Flag it. The marker names the source selector, so it never reads like the Playwright locator under it: `// carried: input[data-qa='email']` above `getByTestId('email')` is correct when the config's test-id attribute is `data-qa`. A marker on a user-facing locator is also correct: it records that the locator was never checked against a page. See Rule 28.
 - Are lists narrowed with `filter()` instead of positional `nth()` where possible? See Rule 24.
 
 ## Test Readability
@@ -96,6 +98,7 @@ Each finding should include:
 
 - Is any finding's only resolution "needs runtime confirmation" / "confirm at verify time" / "residual risk"? If so, it is **verify-owned** — record it as residual risk on a `PASS`, never as a blocking rejection. The `verify` stage runs the test and is the authoritative runtime check; blocking on what `verify` will decide is double-gating.
 - A locator or behavior that can only be confirmed by running the test (for example, authenticated-only locators the probe grounded as `contract-note` because it could not reach the gated state) is verify-owned. Note it; do not block on it.
+- A locator marked `// carried:` under Rule 28 is verify-owned: the test run is what proves it. Note it; do not block on it.
 - This does not soften provable violations: a rule/checklist failure visible in the reviewed artifacts alone (unjustified fallback, uncovered contract step, an assertion that does not prove the outcome) stays blocking. See the reviewer's "Verify-owned findings are Non-blocking by construction" rule.
 
 ## Reviewer Output Template

@@ -8,7 +8,7 @@
     {
       "name": "playwright-guardrails",
       "source": "./",
-      "description": "Playwright migration guardrails: canonical rules and review checklist; preloadable rules, contract, and locator-map skills; a /migrate orchestrator skill; and planner/drafter/probe/writer/reviewer/runner sub-agents."
+      "description": "Playwright migration guardrails: canonical rules and review checklist; preloadable rules, contract, and locator-map skills; a /migrate orchestrator skill; and planner/drafter/probe/translator/writer/reviewer/runner sub-agents."
     }
   ]
 }

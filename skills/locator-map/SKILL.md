@@ -1,13 +1,13 @@
 ---
 name: locator-map
-description: Canonical definition of the locator map — the artifact the probe produces and the writer consumes. Defines the persisted file envelope, the per-entry shape, and every entry-level enum. Preload into the probe, the writer, and the runner via their skills: field; the reviewer must not preload it. Not for direct human use.
+description: Canonical definition of the locator map — the artifact the probe (or, in translate mode, the translator) produces and the writer consumes. Defines the persisted file envelope, the per-entry shape, and every entry-level enum. Preload into the probe, the translator, the writer, and the runner via their skills: field; the reviewer must not preload it. Not for direct human use.
 user-invocable: false
 ---
 
 # Locator Map — Canonical Shape
 
 This skill is the **single source** for the locator map's shape. The probe writes maps in
-this shape; the writer reads them. Neither restates it — both preload this skill, so the
+this shape, and so does the translator in translate mode; the writer reads them. Neither restates it — both preload this skill, so the
 definition is injected into each agent's context at startup and there is no second copy to
 keep in sync. The runner also preloads it, read-only, to tell a probe fault from a writer
 fault when a locator fails at runtime.
@@ -34,14 +34,17 @@ One JSON file per contract:
     "grounded": 26,
     "grounded_this_run": 18,
     "contract_note": 2,
+    "translated": 0,
     "unobserved_states": []
   },
   "entries": [ /* one entry per source locator or contract page-state target */ ]
 }
 ```
 
-`status` and `grounding_summary` are written by the probe and read by callers gating on
-coverage. The writer consumes `entries`.
+`status` and `grounding_summary` are written by the map's producer and read by callers gating
+on coverage. `grounded + contract_note + translated` equals the number of entries; a map from
+the probe always has `translated: 0`, and a map from the translator has `grounded: 0` and
+`grounded_this_run: 0`. The writer consumes `entries`.
 
 ## Entry shape
 
@@ -52,7 +55,7 @@ One entry per source locator or contract page-state target:
   "contract": "path/to/contract.md",
   "source": {
     "selector": "//original-or-css-selector",
-    "source_type": "xpath | css | testid | contract-note | inferred",
+    "source_type": "xpath | css | testid | strategy | contract-note | inferred",
     "contract_step": "Step 7: click Login"
   },
   "replacement": {
@@ -60,12 +63,12 @@ One entry per source locator or contract page-state target:
     "rung": "role | label | placeholder | text | alt | testid | structural | original",
     "resolves_to_one": true
   },
-  "grounding": "live-snapshot | contract-note",
-  "tier_source": "page-object | cache | live",
+  "grounding": "live-snapshot | contract-note | translated",
+  "tier_source": "page-object | cache | live | translation",
   "page": "HomePage",
   "state": "default",
   "auth_context": "anonymous",
-  "provenance": "contract-hint-confirmed | derived-fresh | fell-back-with-reason | contract-note",
+  "provenance": "contract-hint-confirmed | derived-fresh | fell-back-with-reason | contract-note | translated",
   "fallback_reason": null,
   "state_reached": true,
   "notes": []
@@ -87,9 +90,21 @@ field values:
   mandatory, and `replacement.locator` is the contract's proposed locator verbatim,
   unverified. How the writer handles an unverified locator is the writer's rule, not this
   document's.
+- `"translated"`: the locator was converted from the source suite's selector without any
+  browser, in translate mode. It was never checked against a page: the source suite's history
+  is the only evidence it works. `resolves_to_one: false` and `state_reached: false` are
+  mandatory, `tier_source` is `"translation"`, `provenance` is `"translated"`, and
+  `source.selector` holds the source selector verbatim. The generated code carries it as a
+  carried-over locator (Rule 28 of the canonical rules), and the runtime run is what proves
+  it.
+
+`source.selector` holds the source selector exactly as the contract records it. `source_type`
+says what kind it is: `strategy` for a framework locator call such as `By.id("name")`,
+`By.linkText("Sign in")`, or `cy.contains('Save')`, kept whole so the strategy is not lost.
 
 `tier_source` records how *this run* resolved the locator: `page-object` (reused from
-Tier 1), `cache` (reused from Tier 2), or `live` (freshly driven this run). It is auditing
+Tier 1), `cache` (reused from Tier 2), `live` (freshly driven this run), or `translation`
+(converted from the source selector, with no page involved). It is auditing
 metadata — it does not change how the writer treats the locator.
 
 `page`, `state`, and `auth_context` are the Tier 2 cache key. They are required whenever the
@@ -102,5 +117,5 @@ cache is in use so an entry is addressable.
   here.
 - **Never fall back to a remembered shape.** If what you recall disagrees with this document,
   this document wins. The case where this content is absent entirely is caught by the static
-  failure gates in the probe, the writer, and the runner, not here — a guard cannot live inside the content
+  failure gates in the probe, the translator, the writer, and the runner, not here — a guard cannot live inside the content
   whose absence it guards.

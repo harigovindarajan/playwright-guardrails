@@ -3,6 +3,76 @@
 All notable changes to the **playwright-guardrails** plugin are documented here.
 This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [0.6.0] — 2026-10-10
+
+Translate mode: migrate a whole suite to a running state by carrying its existing locators
+over, without a live probe. First half of
+[#8](https://github.com/harigovindarajan/playwright-guardrails/issues/8); grounding the
+carried locators from saved traces follows in a later release.
+
+- **New `playwright-locator-translator` agent** (`sonnet`, `medium`; Read, Grep, Glob,
+  Write). The browser-free alternative to the probe. It converts each origin locator into the
+  Playwright locator that selects the same thing and writes it into the standard locator-map
+  shape. It reads the target config's `testIdAttribute`, so `#id` becomes `getByTestId`
+  only when the framework uses `id` as its test-id attribute. It makes equivalent
+  conversions only and never infers a role or name the source selector does not state. It
+  reuses page-object and cache groundings before translating and never writes the cache.
+- **`skills/locator-map/`** gains a `translated` grounding value (with `tier_source:
+  translation` and `provenance: translated`) and a `translated` count in
+  `grounding_summary`. Probe maps always report `translated: 0`.
+- **New Rule 28, "Mark carried-over locators".** A locator carried over unverified is marked
+  `// carried: <source selector>` on its defining line. A marked locator is residual risk
+  the test run settles, not a Rule 1 violation; an unmarked fallback is still judged under
+  Rule 1. The checklist gains matching checks, and the reviewer's `rule_id` range is now
+  1 to 28. Appended at the end, so no existing rule number changes.
+- **`playwright-test-writer`** marks every translated locator it carries, and when a re-probe
+  grounds an element it carried, swaps in the grounded locator and removes the marker in the
+  same edit.
+- **`playwright-test-runner`** takes an optional `trace` mode, passed as `--trace`, and
+  reports each test's trace files by path. It never opens a trace. A carried locator that
+  fails as written routes to the probe.
+- **`/migrate --locators=translate`** runs the translator instead of the probe, skips the
+  grounding gate (the runner is the gate), runs every round with traces on, and records each
+  attempt's trace files in `runs/index.jsonl`. A probe route with no base URL stops for a
+  human. The default stays `--locators=probe`.
+
+**Fixes from a real Selenium run.** A translate-mode migration of three tests from a
+26-test Selenium Java suite (against a public demo site, with `testIdAttribute: 'data-qa'`)
+passed end to end and exercised the carried-locator → probe route for the first time. It
+also surfaced these, fixed before release:
+
+- **The runner could not tell a covered page from a wrong locator.** An ad interstitial hid
+  the page (root `aria-hidden`), and grounded headings failed as "not found" and were routed
+  to the probe. A new `obstructed` class, routed to a human, is detected from Playwright's
+  error-context snapshot and the error text. The pinned filter returns only yes/no flags
+  (`root_hidden`, `dialog_open`, `action_intercepted`), never the snapshot. A strict-mode
+  violation stays a `locator` failure even on a covered page.
+- **`/migrate` never edits the framework itself.** The orchestrator had blocked the ad hosts
+  in the user's config on its own. It now proposes environment fixes to the user, re-runs
+  only after they act, and follows the runner's route or explains why it disagrees.
+- **Rule 28 and its checklist entry** now say a marker names the source selector, so it need
+  not read like the locator under it (`// carried: input[data-qa='email']` above
+  `getByTestId('email')`).
+- **Strategy calls keep their strategy.** The contract copies `By.id("name")`, not a bare
+  `name`, and the locator map gains `source_type: strategy`, so a marker reads
+  `// carried: By.id("name")`.
+- **Batch-level reports** from an agent run on several test cases are saved once, at
+  `reports/batch-<b>/<stage>-round-<n>.json`, numbered per `/migrate` run so a second batch in
+  the same migration dir doesn't overwrite the first's.
+- **The writer no longer replaces an existing config.** On a near-empty framework root, a
+  `**/*` glob was filled up by `node_modules`, so the writer never saw `playwright.config.ts`.
+  It overwrote the file, dropping `testIdAttribute`, and reported it as `created`. The writer
+  now finds framework files with targeted globs and always reads the config. It uses `Write`
+  only for new paths and adds to an existing config without replacing it. `operation` now
+  records the file's state before the write.
+- **`/migrate` re-runs done tests whose files changed.** A round-2 writer replaced a carried
+  locator in a page object that an already-passed test also uses. Before the summary, specs
+  whose shared files changed after they passed are run once together
+  (`reports/batch-<b>/run-final.json`).
+- **`/migrate` asks before a destructive run.** Before the first run of a spec whose contract
+  has a `destructive` step, it says what the run will change on the real app and waits for a
+  go-ahead. Read-only specs run without asking.
+
 ## [0.5.0] — 2026-10-10
 
 Runtime verification, a canonical contract, suite-level planning, and a reference

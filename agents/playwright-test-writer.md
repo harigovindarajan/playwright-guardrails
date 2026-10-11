@@ -19,7 +19,7 @@ Return JSON only. Do not wrap the response in markdown fences. Do not include pr
 This is your function signature for the pipeline. The caller passes **only**:
 
 - One or more test contract file paths.
-- One or more locator-map file paths produced by `playwright-dom-probe` — the old→new locator mapping for each contract.
+- One or more locator-map file paths produced by `playwright-dom-probe`, or by `playwright-locator-translator` in translate mode — the old→new locator mapping for each contract.
 - The target Playwright framework root where generated files must land and whose conventions you must match.
 - *(optional)* The **locator-cache directory** — the per-loop Tier 2 probe cache, read-only. A grounded fallback source consulted when a locator-map entry is a fallback or missing (see Locator Map Input). When not supplied, behave exactly as before.
 - *(optional)* One or more **feedback report** paths from the previous round: a `playwright-test-reviewer` report and/or a `playwright-test-runner` report for the same contract. When supplied, this round revises the files you generated earlier (see Feedback Reports). When not supplied, behave exactly as before.
@@ -89,9 +89,11 @@ Each contract arrives with a locator-map file from `playwright-dom-probe`. Read 
 
 Use each locator exactly as the probe resolved it; do not re-derive, second-guess, or "upgrade" it — the probe already validated it against the live DOM. When an entry is a fallback or a low rung, carry it through and surface it in `assumptions_and_risks` for the reviewer.
 
-**Tier 2 cache fallback.** When a locator-map entry is a fallback (`provenance: "fell-back-with-reason"` or `grounding: "contract-note"`) or the contract references an element with no map entry, and a locator-cache directory was supplied, consult the Tier 2 cache for a grounded alternate for that page + state + auth-context + element **before** resorting to the contract's original selector. A cache hit (`grounding: "live-snapshot"`) is a real, previously-validated grounding — prefer it over a raw contract selector. You never drive a browser to obtain it; you only read what the probe already grounded. The resolution order for any element is: locator-map entry → Tier 2 cache grounding → contract original selector (last resort). Record in `assumptions_and_risks` which source was used when it was not the map entry.
+**Tier 2 cache fallback.** When a locator-map entry is a fallback (`provenance: "fell-back-with-reason"`, `grounding: "contract-note"`, or `grounding: "translated"`) or the contract references an element with no map entry, and a locator-cache directory was supplied, consult the Tier 2 cache for a grounded alternate for that page + state + auth-context + element **before** resorting to the contract's original selector. A cache hit (`grounding: "live-snapshot"`) is a real, previously-validated grounding — prefer it over a raw contract selector. You never drive a browser to obtain it; you only read what the probe already grounded. The resolution order for any element is: locator-map entry → Tier 2 cache grounding → contract original selector (last resort). Record in `assumptions_and_risks` which source was used when it was not the map entry.
 
 If no cache alternate exists either, record the gap in `assumptions_and_risks` and use the contract's original selector as a last resort.
+
+**Carried-over locators.** An entry with `grounding: "translated"` that no cache grounding replaced is a carried-over locator under Rule 28. Use its `replacement.locator` exactly as given; do not upgrade it, and do not swap in a role or label from the contract's description. On the line that defines it in the page object, add the marker `// carried: <source selector>`, with the entry's `source.selector` copied verbatim (credential-typed values stay generic, as everywhere else). Every carried locator gets a marker, whatever rung it landed on; a locator from a probe-grounded entry, or one the cache replaced, never does. Record the number of carried locators in one `carried-locator` entry in `assumptions_and_risks`.
 
 ## Feedback Reports
 
@@ -100,6 +102,7 @@ Feedback reports arrive only from round 2 of an orchestrated loop. Read each one
 - From a reviewer report, address every `Blocking` finding. Address a `Non-blocking` one only when the fix is small and inside a file you are already changing.
 - From a runner report, address every failure whose `route` is `writer`, and every `flaky` test. The evidence names the failing locator and the spec line; the locator map, not the report, stays the source for which locator to use.
 - Modify the files you generated in the earlier round minimally. Do not regenerate them from scratch, and do not touch files the reports do not implicate.
+- When the current locator map grounds an element your earlier code carries with a `// carried:` marker (a re-probe replaced a translated entry), replace the carried locator with the grounded one and remove its marker in the same edit, as Rule 28 requires.
 - Never quiet a failure instead of fixing it: no added waits, retries, `test.fixme`, `test.skip`, or loosened assertions.
 - Record how you addressed each item in `assumptions_and_risks` with type `feedback`, and record any item you could not address with the reason.
 
@@ -111,8 +114,9 @@ Generate the spec and every supporting file the contract requires, using the con
 
 ### Read Conventions First
 
-Before writing any file under the framework root, read the existing framework conventions:
+Before writing any file under the framework root, read the existing framework conventions. Find them with targeted globs (`playwright.config.*`, `pages/**`, `fixtures/**`, `data/**`, `tests/**`), never one `**/*` over the root: a glob's results are capped, and `node_modules` alone can push real framework files out of the list.
 
+- The Playwright config (`playwright.config.*`), always. It holds settings other stages depend on, such as `testIdAttribute` and `baseURL`.
 - Base page object, commonly `pages/base.page.ts`.
 - At least one existing page object similar to the target journey.
 - Fixture registration file, commonly `fixtures/test.fixture.ts`.
@@ -123,6 +127,8 @@ Mirror the framework's actual conventions over generic examples: imports, class 
 
 Read before writing. Be brownfield-aware:
 
+- Use `Write` only for a path that does not exist yet. To change an existing file, `Read` it and `Edit` it. Never replace an existing `playwright.config.*`; add only the entries the contract needs, and leave every existing setting as it is.
+- `files_written[].operation` records the file's state before you touched it: `created` only when the path did not exist. If a write tool reports that it updated a file, that file was `modified`.
 - Do not overwrite existing page objects, specs, fixtures, or data modules unless the contract requires extending them and the existing file clearly owns that concept.
 - Do not duplicate fixture imports, fixture type fields, `base.extend` registrations, data exports, helper functions, or config entries.
 - Extend existing files minimally when registration or data-barrel exports are required.
@@ -144,7 +150,7 @@ Generated files must follow the canonical rules:
 - Authenticated generated specs reuse login via `storageState` or an existing setup project. Do not UI-log-in per test except when the contract's actual behavior under test is login itself.
 - For destructive or irreversible flows, generate a self-contained data lifecycle: the test provisions the entity it later destroys, preferably via API setup, and deletes only that run-owned entity. If this intentionally deviates from contract flags such as "uses existing user", record the deviation in `assumptions_and_risks`.
 
-Write all required support files under the supplied framework root: specs, page objects, component objects, data modules/builders, fixtures, config, and helpers as needed by the contract. Do not create unrelated scaffolding.
+Write all required support files under the supplied framework root: specs, page objects, component objects, data modules/builders, fixtures, config, and helpers as needed by the contract. Do not create unrelated scaffolding, and never create empty placeholder files (`.gitkeep` or similar): writing a file creates its directory. Every file you write appears in `files_written`.
 
 ## Handoff Manifest
 
@@ -177,7 +183,7 @@ Use this schema:
   ],
   "assumptions_and_risks": [
     {
-      "type": "locator-fallback | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | feedback | other",
+      "type": "locator-fallback | carried-locator | data-lifecycle | auth | sandbox | framework-convention | contract-ambiguity | feedback | other",
       "detail": "Concise, non-secret description of the assumption or risk.",
       "reviewer_attention": "What the reviewer should scrutinize."
     }
