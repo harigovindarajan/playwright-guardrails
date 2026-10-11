@@ -703,11 +703,11 @@ await page.route('**/payments.example.com/charge', route =>
 > MUST: A locator carried over from the source suite without being checked against the live page is marked on the line that defines it with `// carried: <source selector>`, the source selector copied verbatim.
 > WHY: In a translate-first migration, a suite's existing selectors are carried into Playwright so every test reaches a running state before anyone spends time grounding locators. Those locators have not been through the Rule 1 ladder. The marker says so in the code itself, so a reader, a reviewer, and a later upgrade step can all tell a deliberate carry-over from an unjustified fallback.
 
-A marked locator is an accepted, temporary exception to Rule 1 and Rule 2: it is reviewed as residual risk that the test run settles, not as a violation. The exception covers only the marker's own line. An unmarked CSS, XPath, test-id, structural, or positional locator is still a fallback that needs the evidence Rule 1 asks for. A carried locator keeps its marker whatever rung it landed on, user-facing ones included: the marker records that the locator was never checked against a page, not that its rung is low. It comes off only when the locator is replaced by a grounded one.
+A marked locator is an accepted, temporary exception to Rule 1 and Rule 2: it is reviewed as residual risk that the test run settles, not as a violation. The exception covers only the marker's own line. An unmarked CSS, XPath, test-id, structural, or positional locator is still a fallback that needs the evidence Rule 1 asks for. A carried locator keeps its marker whatever rung it landed on, user-facing ones included: the marker records that the locator was never checked against a page, not that its rung is low. It comes off only when the locator is grounded: replaced by a grounded locator, or confirmed as it stands by a grounding that chose the same locator.
 
 The marker names the selector the locator was translated from, so it need not read like the locator under it: `// carried: input[data-qa='email']` above `getByTestId('email')` is correct when the test-id attribute is `data-qa`.
 
-Upgrading a carried locator replaces it with a grounded one and removes its marker in the same change. Never edit a carried locator by hand while keeping its marker: the marker would then describe a selector the code no longer uses.
+Upgrading a carried locator replaces it with the grounded one, or keeps it when the grounding confirmed it, and removes its marker in the same change. Never edit a carried locator by hand while keeping its marker: the marker would then describe a selector the code no longer uses.
 
 #### Good
 
