@@ -33,7 +33,7 @@ This is your function signature for the pipeline. The caller passes **only**:
 In **trace mode** the caller also passes:
 
 - The Playwright **framework root**: the directory Playwright is installed in. The trace commands resolve Playwright from it.
-- A **scratch directory** inside the framework root and out of version control (the migration dir's `scratch/`). Trace extraction, snapshot console logs, and your snippet files go here; you empty it on every exit path.
+- A **scratch directory** inside the framework root and out of version control (the migration dir's `scratch/`). The extracted trace, the snapshot console logs, and your snippet files go here. `trace close` removes the extracted trace; your snippet files stay, as the record of how each locator was grounded.
 - For each contract: its **current locator-map file**, and **one runner report**: the JSON a `playwright-test-runner` run of that contract's spec returned. The report names the run's trace files and, for a failure, the failing locator and its map entry.
 - **`scope`**: `failing` — ground only the entries the report's failures implicate (the fix loop); or `carried` — ground every `translated` entry in the current map from a passing run (the upgrade).
 
@@ -99,7 +99,7 @@ Return a blocking static failure and write no locator map only when one of these
 
 Do **not** fail the run because a locator cannot be upgraded to a higher ladder rung, or because a trace lacks the state an entry lives in. Locator grounding is best effort. Fall back, record the reason in the locator map, and continue.
 
-Close what you opened on every exit path, failure or fallback: the trace (`trace close`) and the scratch directory's contents in trace mode, the browser session in live mode.
+Close what you opened on every exit path, failure or fallback: the trace (`trace close`) in trace mode, the browser session in live mode.
 
 ## Contract Understanding
 
@@ -179,7 +179,7 @@ You ground from the saved trace of a real test run. A Playwright trace records a
 
 ### Pinned commands
 
-Run every command from the scratch directory (`cd <scratch-dir> && ...`), so the extracted trace and the snapshot console logs land there. Open **one trace at a time**: `trace open` replaces whatever trace is open. These are the only Bash commands allowed in trace mode:
+Run every command from the scratch directory (`cd <scratch-dir> && ...`), so the extracted trace and the snapshot console logs land there. Open **one trace at a time**: `trace open` replaces whatever trace is open. These are the only Bash commands allowed in trace mode. You may chain them with `&&` in one call, but nothing else runs in the shell: no `cat`, `sed`, `ls`, `head`, `rm`, heredocs, or redirects. Write snippet files with the Write tool, and never delete anything: a shell write or delete can be held for the user's approval and stall the whole run, and the trace commands clean up after themselves.
 
 ```bash
 # Preflight, once: confirm the trace tooling supports phases and commands (Playwright 1.63+)
@@ -202,9 +202,9 @@ Never run any other `trace` subcommand or form: not `trace action`, `requests`, 
 
 ### Snippets
 
-A snippet is a file you write in the scratch directory: one JavaScript function expression, `async page => { ... }`, that only reads the frozen snapshot and returns a JSON-serializable result. Never click, fill, navigate, or wait in a snippet. Write locators into the file exactly as the map gives them (dropping the leading `page.`), so quotes in XPath and CSS selectors never pass through a shell.
+A snippet is a file you write with the Write tool in the scratch directory, a new file for each snapshot and kind, named `<testcase>-<action-id>-<phase>-describe.js` or `<testcase>-<action-id>-<phase>-count.js`. Never rewrite one: Write refuses to overwrite a file you have not read, and one file per step is the record of how you grounded each locator. A snippet is one JavaScript function expression, `async page => { ... }`, that only reads the frozen snapshot and returns a JSON-serializable result. Never click, fill, navigate, or wait in a snippet. Write locators into the file exactly as the map gives them (dropping the leading `page.`), so quotes in XPath and CSS selectors never pass through a shell.
 
-Every snippet that returns page content starts by blanking form values, and returns nothing but what you ground from:
+Every snippet starts with this preamble, verbatim, whatever it returns, and returns nothing but what you ground from:
 
 ```js
 async page => {
@@ -249,7 +249,7 @@ That is two snapshot commands per snapshot, describe then count, each taking a f
 10. **Record each target entry you could not ground:**
     - scope `carried`: leave it `translated` exactly as it was, and add a note with the reason (`not exercised in the traced run`, `carried locator not unique in the snapshot`, `no candidate matched exactly one element`, `no trace in the run report`);
     - scope `failing`: make it a `contract-note` whose `fallback_reason` names the trace and action and says why. It is a blocked cause, so the map is `partial`, and the orchestrator stops for a human rather than guessing.
-11. **Close the trace** before opening the next, and when you are done, empty the scratch directory.
+11. **Close the trace** before opening the next, and close the last one before you return. Leave your snippet files where they are.
 
 Persist the map (Grounding core). It holds every entry of the current map, target entries updated in place. Record in `assumptions_and_risks` how many target entries you grounded and, by reason, how many you could not.
 

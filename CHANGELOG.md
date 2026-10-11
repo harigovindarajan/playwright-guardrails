@@ -22,8 +22,9 @@ default, and drives the live app only when you ask for it. Second half of
     used. A grounding that picks the carried locator itself confirms it.
   - **Trace hygiene.** A trace stores typed text, passwords included, in action titles, and a
     rendered snapshot restores form values. The probe lists actions only through a pinned
-    redaction filter, blanks every form value before reading a snapshot, runs only pinned
-    trace commands, and never runs the ones that print parameters, requests, or raw snapshots.
+    redaction filter, starts every snippet by blanking form values, runs only pinned trace
+    commands (snippets are written with the Write tool, and nothing is deleted), and never runs
+    the ones that print parameters, requests, or raw snapshots.
 - **`/migrate` is trace-first.** `--locators=trace` (the default) translates the first map,
   runs with traces on, and on a locator failure grounds the element from that run's trace,
   with no base URL. When a trace cannot resolve it, `/migrate` stops and offers

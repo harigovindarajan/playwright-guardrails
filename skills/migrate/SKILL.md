@@ -65,8 +65,8 @@ reports, maps, and the cache line up across rounds:
   creates one `attempt-<k>/` folder inside it per Playwright invocation, so every run's report,
   log, and traces are kept side by side and nothing is overwritten.
 - `runs/index.jsonl`: your append-only index of every run attempt, one JSON line each (see below)
-- `scratch/`: the probe's scratch directory in trace mode. It extracts traces here and empties
-  it when it is done.
+- `scratch/`: the probe's scratch directory in trace mode. It extracts each trace here and
+  removes it with `trace close`; its snippet files stay, as the record of each trace grounding.
 
 Create these directories (and each round's `runs/` directory) before the agent that needs them
 runs. The drafter, the probe, and the runner require their output directories to exist and
