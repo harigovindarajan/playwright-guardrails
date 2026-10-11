@@ -1,7 +1,7 @@
 ---
 name: migrate
-description: Drive a test migration to Playwright through the plugin's sibling agents in order (planner, drafter, probe, writer, reviewer, runner), gating on locator grounding (or, in translate mode, carrying the source suite's locators over without a live probe), routing review and runtime failures back to the right stage, and stopping for a human after a fixed number of rounds. Run from the main session, which spawns each agent in turn; no agent calls another. Use when the user asks to migrate a suite, a test file, or a contract to Playwright end to end.
-argument-hint: "<source suite root or test file> [--framework-root=tests] [--base-url=...] [--locators=probe|translate] [--threshold=0.8] [--rounds=3]"
+description: Drive a test migration to Playwright through the plugin's sibling agents in order (planner, drafter, translator, writer, reviewer, runner), carrying the source suite's locators over and grounding them from the traces of real runs instead of a live probe (or, only when asked, against the live app), routing review and runtime failures back to the right stage, and stopping for a human after a fixed number of rounds. Also upgrades a finished migration's carried locators from its saved traces (--upgrade). Run from the main session, which spawns each agent in turn; no agent calls another. Use when the user asks to migrate a suite, a test file, or a contract to Playwright end to end.
+argument-hint: "<source suite root or test file> [--framework-root=tests] [--locators=trace|live] [--base-url=...] [--threshold=0.8] [--rounds=3] | --upgrade [--migration-dir=...]"
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -30,24 +30,36 @@ guess a URL, a path, or a credential.
 | Source helper paths (page objects, custom commands, fixtures) | no | none | drafter, planner |
 | Playwright framework root | yes | | writer, runner |
 | Page-objects dir inside the framework root | no | `<framework-root>/pages` if it exists | probe (Tier 1) |
-| Locator source: `probe` (ground every locator against the live app) or `translate` (carry the source suite's locators over, see Translate mode) | no | `probe` | step 3 |
-| App base URL | in `probe` mode | | probe |
+| Locator source: `trace` (carry the source suite's locators over, then ground them from the traces of real runs; see step 3) or `live` (ground every locator against the live app, only when the user asks for it) | no | `trace` | steps 3 and 4 |
+| App base URL | in `live` mode | | probe (live) |
 | `storageState` path, and the env var name the framework reads it from | when any state is gated | | probe, runner |
 | Env file and required variable names | no | none | runner |
 | Migration dir (contracts, maps, cache, reports) | no | `.playwright-migration/` | all |
-| Grounding threshold | no | `0.8` | probe gate (not used in translate mode) |
+| Grounding threshold | no | `0.8` | live probe gate (not used in `trace` mode) |
 | Round cap | no | `3` | feedback loop |
+
+`translate` and `probe`, the 0.6.0 names for the locator source, still work for this release
+as aliases of `trace` and `live`. Trace mode needs Playwright 1.63 or later in the framework
+root; the probe checks, and fails statically with `missing-trace-cli` on an older install. Tell
+the user the version it needs.
 
 From the migration dir, use these sub-paths **for every round of every test case**, so that
 reports, maps, and the cache line up across rounds:
 
 - `contracts/`: drafter output, filename pattern `{testcase}-contract.md`
-- `locator-maps/`: probe output, one file per probe run, filename pattern
-  `{testcase}-locator-map.r<n>.json`, where `<n>` is the round the probe ran for (`r1` for the
-  first probe). You fill in `<n>` before passing the pattern, so the probe sees, for example,
-  `{testcase}-locator-map.r2.json`. A re-probe never replaces an earlier map; the highest
-  version is the **current map**, and every earlier one stays as evidence of what a past round
-  ran with.
+- `locator-maps/`: translator and probe output, one file per run, filename pattern
+  `{testcase}-locator-map.r<n>.json`. `<n>` is the **next free version** for that test case:
+  one more than the highest version already on disk (`r1` when there is none). Versions count
+  map writes, not rounds; `runs/index.jsonl` records which version each round ran with. You
+  fill in `<n>` before passing the pattern, so the agent sees, for example,
+  `{testcase}-locator-map.r2.json`. **Never overwrite a map version**: every earlier one stays
+  as evidence of what a past round ran with.
+- **The current map** of a test case is the version its latest run used (`map` in
+  `runs/index.jsonl`), or, within a migration, the newer version the probe just wrote for the
+  round you are about to run. A map is current because a round runs with it, not because it is
+  the newest file: a map `--upgrade` wrote that the user chose not to apply never becomes
+  current. It stays on disk as a proposal, and a later fix round or upgrade starts from the
+  version the code actually runs with.
 - `locator-cache/`: the probe's Tier 2 cache, shared by every test case in this migration
 - `reports/<testcase>/`: every agent's JSON for that test case, written by you as
   `<stage>-round-<n>.json`. An agent you run on several test cases at once (the planner, or a
@@ -60,6 +72,8 @@ reports, maps, and the cache line up across rounds:
   creates one `attempt-<k>/` folder inside it per Playwright invocation, so every run's report,
   log, and traces are kept side by side and nothing is overwritten.
 - `runs/index.jsonl`: your append-only index of every run attempt, one JSON line each (see below)
+- `scratch/`: the probe's scratch directory in trace mode. It extracts each trace here and
+  removes it with `trace close`; its snippet files stay, as the record of each trace grounding.
 
 Create these directories (and each round's `runs/` directory) before the agent that needs them
 runs. The drafter, the probe, and the runner require their output directories to exist and
@@ -91,23 +105,41 @@ paths, and `contracts/` as the output directory. Persist the manifest.
 
 **Gate: open questions.** For each contract in the manifest:
 
+- **Helper preflight.** When every `blocking` question on a contract comes from an unresolved
+  helper (a call into shared code the drafter was not given; the manifest lists them in
+  `unresolved_helpers`), search the source root for each helper's definition. If you find all
+  of them, tell the user which files define them and offer to re-run the drafter with those
+  files added as helper paths. Re-draft only after they agree, and save its manifest as the
+  next draft round (`draft-round-2.json`). Never add files without asking.
 - Any `blocking` open question: **stop this test case** and put the questions to the user.
   Continue only after the contract has been edited to answer them. Other test cases may go
   ahead.
 - `non-blocking` questions: show them to the user and continue. The writer carries them as
   risks.
 
-### 3. Probe (or translate)
+### 3. Ground the first map
 
-In translate mode, skip to **Translate mode** below; the rest of this step is the default
-`probe` path.
+**Default (`trace`): translate.** Spawn `playwright-locator-translator` with the contract(s),
+the framework root, `locator-maps/` as the output directory, the filename pattern with the next free version (`r1` for a new test case),
+`locator-cache/` and the page-objects dir when they exist (both read-only for it), and the
+`storageState` path when there is one (only its name is used). Persist the manifest.
 
+**Gate: none on grounding.** A translator map is unverified by design, so the grounding ratio
+does not apply; the runner is the gate. Stop only when the manifest's `status` is `FAILED`. The
+writer marks every translated locator under Rule 28, and the reviewer treats a marked locator as
+residual risk the run settles. Every run keeps a trace (see Run below), so the probe can ground
+from what the runs observed instead of driving the app: a failing locator in the feedback loop
+(step 4), and the carried locators of passing tests in an upgrade (see Upgrade carried
+locators).
 
-Spawn `playwright-dom-probe` with the contract(s), the base URL, the `storageState`,
-`locator-maps/` as the output directory, the `r1` filename pattern above, `locator-cache/`,
-and the page-objects dir when it exists. Persist the manifest.
+**`live`, only when the user asks for it.** Live probing drives the app for every page state,
+which costs far more time and tokens than translating and grounding from traces. Never choose it
+yourself: use it only when the user passed `--locators=live` or asked for it in words. Spawn
+`playwright-dom-probe` with `mode: live`, the contract(s), the base URL, the `storageState`,
+`locator-maps/` as the output directory, the filename pattern with the next free version, `locator-cache/`, and
+the page-objects dir when it exists. Persist the manifest.
 
-**Gate: grounding.** Stop the test case for a human when any of these is true:
+**Gate: grounding (live only).** Stop the test case for a human when any of these is true:
 
 - The manifest's `status` is `FAILED`.
 - The test case's map has `status: "partial"`: a state was blocked, not deliberately skipped,
@@ -125,21 +157,6 @@ must have grounded at least four of every five locators against a live snapshot,
 writer works mostly from verified locators and the unverified rest are visible to the
 reviewer and the runner. The `partial` rule covers what a ratio cannot: a single blocked state
 can hold few locators and still mean the journey is broken.
-
-#### Translate mode
-
-Spawn `playwright-locator-translator` instead of the probe, with the contract(s), the
-framework root, `locator-maps/` as the output directory, the `r1` filename pattern,
-`locator-cache/` and the page-objects dir when they exist (both read-only for it), and the
-`storageState` path when there is one (only its name is used). Persist the manifest.
-
-**Gate: none on grounding.** A translator map is unverified by design, so the grounding ratio
-does not apply; the runner is the gate in translate mode. Stop only when the manifest's
-`status` is `FAILED`. The writer marks every translated locator under Rule 28, and the
-reviewer treats a marked locator as residual risk the run settles.
-
-Translate mode keeps a trace of every run (see Run below), so a later step can ground the
-carried locators from what the runs observed, without the app.
 
 ### 4. Write, review, run: the feedback loop
 
@@ -159,7 +176,7 @@ Run rounds `n = 1, 2, ...` up to the round cap.
    - `PASS`: continue to the runner.
 3. **Run.** Spawn `playwright-test-runner` with the spec(s), the framework root,
    `runs/<testcase>/round-<n>/` as the run output directory, the current map and contract, the
-   `storageState` and its env var name, and the env file with its variable names. In translate
+   `storageState` and its env var name, and the env file with its variable names. In `trace`
    mode also pass trace `on`, so every attempt keeps a trace of each test. Persist the
    report, then append one entry per attempt in the report's `run.attempts` (a `FAILED`
    report can carry attempts too) to
@@ -183,15 +200,23 @@ Run rounds `n = 1, 2, ...` up to the round cap.
      say what covered it and propose the environment fix, for example blocking the same ad
      hosts the probe blocks by default in the user's Playwright config. Re-run only after the
      user has made the change; never route an obstructed page to the probe or the writer.
-   - Any failure routed `probe`: in translate mode with no base URL, stop for a human: there
-     is no app to ground against. Otherwise re-run the probe for this contract before the
-     next round, with the same output directory and the **next** round's filename pattern (after round 2,
-     `{testcase}-locator-map.r3.json`), so the earlier map is kept and the new one becomes the
-     current map. Run it **without** the page-objects dir and the locator cache, so it
-     re-grounds live instead of replaying the locator that just failed. If the new map's
-     entry for the failing element is still a `contract-note`, stop for a human: the probe
-     cannot reach it either. Then apply the grounding gate to the new map and go to the next
-     round.
+   - Any failure routed `probe`: ground the failing locator again before the next round,
+     writing the next free map version, so the earlier map is kept and the new one is the current
+     map for the next round. Pass **neither** the
+     page-objects dir nor the locator cache, so the probe grounds afresh instead of replaying
+     the locator that just failed.
+     - `trace` mode: spawn the probe with `mode: trace` and `scope: failing`, the contract, its
+       current map, this round's runner report, the framework root, and `scratch/`. It grounds
+       only the implicated element(s), from the snapshot the run's trace recorded at the
+       failure, with no URL and no live app. If any implicated entry comes back a
+       `contract-note`, stop for a human: the trace could not resolve it. Say so, and offer
+       `--locators=live` as the way to ground it against the app; never switch to live
+       yourself. Otherwise go to the next round. There is no ratio gate here: the map still
+       holds translated entries that the runs prove.
+     - `live` mode: spawn the probe with `mode: live`, the base URL, and the `storageState`. If
+       the new map's entry for the failing element is still a `contract-note`, stop for a
+       human: the probe cannot reach it either. Then apply the grounding gate to the new map
+       and go to the next round.
    - Any failure routed `writer`, or any `flaky` test: go to the next round; the writer gets
      this run report as feedback. A flaky test is not done.
 
@@ -222,6 +247,36 @@ When every test case is done or stopped, give the user one summary:
 - every `flaky` test and every non-blocking open question still standing;
 - the paths of `reports/`, `runs/`, and `runs/index.jsonl`.
 
+## Upgrade carried locators: `/migrate --upgrade`
+
+A test that passes on carried locators is migrated: the run proved them. Upgrading them to
+grounded, user-facing locators is optional polish, run as its own invocation over an existing
+migration dir, never inside a migration. It drives nothing: the probe grounds from the traces
+the passing runs already saved.
+
+1. **Find what to upgrade.** For each test case, take its current map (the version its latest
+   run used), and skip the test case unless the map has `translated` entries. From
+   `runs/index.jsonl`, take the test case's latest entry with at least one pass, no `fail`, no
+   `flaky`, and a non-empty `traces` list, and the runner report it points to. A test case with
+   no such run has no passing trace: report it as not upgradable and skip it.
+2. **Ground.** Spawn one `playwright-dom-probe` for all of them with `mode: trace` and
+   `scope: carried`: each contract with its current map and that passing run report, the
+   framework root, `scratch/`, `locator-cache/`, and the page-objects dir when it exists. Each
+   test case's map is written as its next free version. Save the manifest as
+   `reports/batch-<b>/upgrade-round-1.json`.
+3. **Show the result.** Per test case: each carried locator upgraded (old → new, or confirmed as
+   it stands) and each left carried, with its reason. If nothing was upgraded, stop here.
+4. **Ask before applying.** Applying rewrites page objects and re-runs specs. Suggest that the
+   user commit first, so they can revert the upgrade with git (you never touch git), and wait
+   for their go-ahead.
+5. **Apply.** For each test case the user chose, run the feedback loop (step 4) from round
+   `n'`, one more than the highest round in its index entries, with the upgrade map as the map
+   for that round, the round cap counted from `n'`. For the test cases the user did not choose,
+   the upgrade maps stay proposals (see the current map above). The writer swaps
+   each grounded locator and removes its marker (Rule 28); the reviewer and the runner check the
+   result, and failures route as in step 4. Then finish with step 5, which re-runs every done
+   test whose shared files the upgrade changed.
+
 ## Rules for the orchestrator
 
 - **Spawn, don't do.** Every contract, map, spec, review, and run comes from its agent. That
@@ -237,10 +292,12 @@ When every test case is done or stopped, give the user one summary:
 - **Keep the migration dir out of version control.** The runner redacts what it reports, but
   Playwright writes its raw report, log, traces, and screenshots under `runs/` unredacted.
   Add the migration dir to `.gitignore` before the first run.
-- **Ask before a destructive run.** The runner runs against the real app. Before the first run
-  of a spec whose contract has a `destructive` step (it creates, posts, pays for, or deletes
+- **Ask before a destructive run.** The runner runs against the real app. Before the first run,
+  in each `/migrate` invocation, of a spec whose contract has a `destructive` step (it creates, posts, pays for, or deletes
   something), tell the user what it will change and wait for their go-ahead. Read-only specs
   run without asking.
+- **Live only on request.** Never pass `mode: live` to the probe unless the user asked for live
+  probing. When trace grounding stops a test case, offer live; don't take it.
 - **Stop means stop.** When a gate stops a test case, tell the user why and what would let it
   continue. Don't relax a threshold or skip a stage to get to green.
 

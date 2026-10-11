@@ -21,8 +21,9 @@ implicit.
 
 The agents are **agnostic to the source framework**. Selenium-to-Playwright is the
 battle-tested path, but the same pipeline handles Cypress, WebDriver, or any other
-origin: the probe grounds locators against the live DOM rather than translating old
-selectors, so it never depends on what the source suite used.
+origin: carried selectors are only a starting point, and the probe grounds each locator
+against a snapshot of the real app (by default the trace of a test run), so the end result
+never depends on what the source suite used.
 
 The recommended starting point is a **test contract** — a plain-language description of
 what each existing test proves: its intent, the journey and steps, the data it needs,
@@ -64,21 +65,26 @@ helper paths. See the **Invocation Contract** in
 
 ### `playwright-dom-probe`
 
-**Focus:** Grounds a test contract's origin locators — whatever the source framework
-used — against the live app.
-It drives the contract's journey to reach each page state, snapshots it, and derives
-each locator to the highest user-facing Playwright rung that matches exactly one
-element — then writes a persisted `locator_map` file per test case.
+**Focus:** Grounds a test contract's locators against a snapshot of the real app and
+derives each one to the highest user-facing Playwright rung that matches exactly one
+element, then writes a persisted `locator_map` file per test case. By default the snapshot
+comes from the **saved trace of a test run**: Playwright's own trace tooling renders it
+offline, so no URL, auth, or journey is needed. In **live mode**, only when asked, it drives
+the contract's journey against the running app instead.
 
-**When to use:** After a contract exists, whenever its locators need to be resolved
-against a running application.
+**When to use:** In trace mode, when a run failed on a carried locator (it grounds just that
+element from the failure's trace), or to upgrade a finished migration's carried locators from
+its passing traces (`/migrate --upgrade`). Live mode is for when you explicitly want every
+locator grounded against the app before anything is written; it costs far more time and
+tokens.
 
-**Invocation:** Dispatched with contract path(s), the live app base URL, a
-`storageState` file for gated entry points, and an output directory (plus optional
-reuse and block-list inputs). Its **Invocation Contract** section in
-[`agents/playwright-dom-probe.md`](agents/playwright-dom-probe.md) is the authoritative
-signature. Requires `playwright-cli` on `PATH` — it is the only agent that drives a
-browser.
+**Invocation:** Trace mode takes contract path(s), each contract's current map and runner
+report, the framework root, a scratch directory, a scope (`failing` or `carried`), and an
+output directory. Live mode takes contract path(s), the live app base URL, a `storageState`
+file for gated states, and an output directory. Both take optional reuse inputs. Its
+**Invocation Contract** in [`agents/playwright-dom-probe.md`](agents/playwright-dom-probe.md)
+is the authoritative signature. Trace mode needs Playwright 1.63 or later in the framework;
+live mode needs `playwright-cli` on `PATH`.
 
 ### `playwright-locator-translator`
 
@@ -88,10 +94,10 @@ attribute to `getByTestId`, a link-text lookup to a link role), reading the targ
 `testIdAttribute`, and writes them into the same locator-map shape marked `translated`. It
 never infers a role or name the source selector doesn't state.
 
-**When to use:** Instead of the probe, when the source suite's locators are trusted and you
-want every test migrated and running before spending time on live grounding. The writer
-marks each translated locator `// carried: <source selector>` (Rule 28), and the test run is
-what proves it.
+**When to use:** For the first map of every migration, by default. It gets every test
+migrated and running before any time goes into grounding. The writer marks each translated
+locator `// carried: <source selector>` (Rule 28), the test run is what proves it, and the
+probe later grounds carried locators from the runs' traces.
 
 **Invocation:** Dispatched with contract path(s), the framework root, and an output
 directory, plus optional reuse inputs. See the **Invocation Contract** in
@@ -157,24 +163,29 @@ The seven agents are independent siblings: **none calls another**. An orchestrat
 ```text
 planner  source suite                    → plan: inventory, risks, order
 drafter  source test + helpers           → contract file(s)
-probe    contract + live app             → locator_map file(s)
-  or translator (translate mode)
-         contract + framework config     → locator_map file(s), unverified
+translator contract + framework config   → locator_map file(s), unverified
+  (or, with --locators=live, the probe: contract + live app → locator_map file(s))
 writer   contract + locator_map          → spec + framework files
 reviewer spec + contract                 → PASS / FAIL
-runner   spec + framework                → pass / fail / flaky / skipped, routed
+runner   spec + framework                → pass / fail / flaky / skipped, routed, traced
+probe    contract + map + run's trace    → locator_map file(s), grounded offline
 
 feedback loop, up to 3 rounds:
   writer → reviewer ── FAIL ──────────────────────────► next round
                     └─ PASS → runner ── all pass ─────► done
                                      ├─ route: writer ─► next round
-                                     ├─ route: probe ──► re-probe, next round
+                                     ├─ route: probe ──► ground it from the trace, next round
                                      └─ route: human ──► stop
+
+later, optional: /migrate --upgrade
+  probe grounds every carried locator from passing traces → writer → reviewer → runner
 ```
 
-`/migrate` gates the probe's map on its grounding ratio (default 0.8) and stops for a human
-after 3 feedback rounds. Both are configurable; [`DESIGN.md`](DESIGN.md) explains the
-defaults.
+By default no stage drives the live app: the runner is the gate, and the probe grounds from
+the traces the runs saved. `/migrate` stops for a human after 3 feedback rounds, and when a
+trace cannot resolve a failing locator it offers live probing rather than switching to it.
+With `--locators=live`, it gates the live probe's map on its grounding ratio (default 0.8).
+[`DESIGN.md`](DESIGN.md) explains the defaults.
 
 Because the writer consumes a persisted map instead of probing, a stored map can be
 replayed straight into the writer — skipping the probe — for deterministic,
@@ -204,17 +215,27 @@ preload-only, so none of them is invoked directly.
 The shortest path is the orchestrator:
 
 ```text
-/migrate cypress/e2e/login.cy.ts --framework-root=tests --base-url=https://staging.yourapp.example
+/migrate cypress/e2e/login.cy.ts --framework-root=tests
 ```
 
 It asks for anything it still needs (a `storageState`, an env file), then plans, drafts,
-probes, writes, reviews, and runs, and reports what finished and what stopped.
+translates, writes, reviews, and runs, and reports what finished and what stopped. No stage
+drives the live app: the test run is the gate, every run keeps a trace, and a locator that
+fails is grounded again from its run's trace. This needs Playwright 1.63 or later in the
+framework.
 
-To carry the source suite's locators over instead of probing the live app first, use
-translate mode. No live probe runs; the test run is the gate, and every run keeps a trace:
+Once tests pass, upgrade their carried locators to grounded, user-facing ones from the traces
+those passing runs saved. It shows what would change and asks before rewriting anything:
 
 ```text
-/migrate cypress/e2e/ --framework-root=tests --locators=translate
+/migrate --upgrade --framework-root=tests
+```
+
+To ground every locator against the live app before anything is written, ask for live mode.
+It is slower and costs far more tokens:
+
+```text
+/migrate cypress/e2e/login.cy.ts --framework-root=tests --locators=live --base-url=https://staging.yourapp.example
 ```
 
 To run the stages yourself, dispatch the agents from your Claude Code session in sequence:
@@ -224,8 +245,8 @@ Use playwright-contract-drafter on cypress/e2e/login.cy.ts with helpers in
 cypress/support/, output to contracts/.
 (Its manifest lists the files it wrote. Below, that is contracts/login-contract.md.)
 
-Use playwright-dom-probe on contracts/login-contract.md against
-https://staging.yourapp.example with auth/storageState.json, output to locator-maps/.
+Use playwright-locator-translator on contracts/login-contract.md for the framework at
+tests/, output to locator-maps/.
 
 Use playwright-test-writer on contracts/login-contract.md with
 locator-maps/login-locator-map.json, targeting the framework at tests/.
@@ -234,7 +255,12 @@ Use playwright-test-reviewer on tests/login.spec.ts against
 contracts/login-contract.md.
 
 Use playwright-test-runner on tests/login.spec.ts in the framework at tests/, run output
-to runs/login/, with locator-maps/login-locator-map.json and contracts/login-contract.md.
+to runs/login/, with locator-maps/login-locator-map.json and contracts/login-contract.md,
+tracing on.
+
+If a locator fails: use playwright-dom-probe in trace mode, scope failing, on
+contracts/login-contract.md with its current map and that runner report, framework root
+tests/, scratch dir .playwright-migration/scratch/, output to locator-maps/.
 ```
 
 For a whole suite, start with `Use playwright-migration-planner on cypress/` and migrate in
@@ -246,14 +272,14 @@ the optional inputs.
 ## Requirements
 
 - **Claude Code** with plugin support.
-- **`playwright-cli`** on `PATH` — a runtime dependency of the probe for driving the
-  app and grounding locators.
-- **Playwright and its browsers installed in the target framework.** The runner runs specs
-  with `npx --no-install playwright test` and never installs anything; if either is missing,
-  it stops with a blocking failure. The planner, drafter, writer, and reviewer need no
-  browser.
-- A **`storageState`** file for gated entry points — the probe's only auth path; it
-  never enters credentials into a form.
+- **Playwright 1.63 or later and its browsers installed in the target framework.** The runner
+  runs specs with `npx --no-install playwright test` and never installs anything; if either is
+  missing, it stops with a blocking failure. The probe's default trace mode uses the same
+  install's `npx --no-install playwright trace`, which needs 1.63 or later. The planner,
+  drafter, translator, writer, and reviewer need no browser.
+- **Live mode only:** `playwright-cli` on `PATH`, which the probe drives the app with, and a
+  **`storageState`** file for gated states, the probe's only auth path; it never enters
+  credentials into a form.
 
 ## Out of scope
 

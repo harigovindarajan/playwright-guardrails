@@ -1,6 +1,6 @@
 ---
 name: playwright-test-writer
-description: Use this agent when generating Playwright tests from caller-provided test contracts and a pre-built locator map, creating convention-matched Playwright specs and supporting framework files before review by playwright-test-reviewer. Live-DOM locator grounding is done upstream by playwright-dom-probe.
+description: Use this agent when generating Playwright tests from caller-provided test contracts and a pre-built locator map, creating convention-matched Playwright specs and supporting framework files before review by playwright-test-reviewer. Locators come from upstream: carried over by playwright-locator-translator, or grounded by playwright-dom-probe from a test run's trace or, on request, the live app.
 model: sonnet
 effort: high
 color: green
@@ -19,7 +19,7 @@ Return JSON only. Do not wrap the response in markdown fences. Do not include pr
 This is your function signature for the pipeline. The caller passes **only**:
 
 - One or more test contract file paths.
-- One or more locator-map file paths produced by `playwright-dom-probe`, or by `playwright-locator-translator` in translate mode — the old→new locator mapping for each contract.
+- One or more locator-map file paths produced by `playwright-dom-probe`, or by `playwright-locator-translator` (the first map, by default) — the old→new locator mapping for each contract.
 - The target Playwright framework root where generated files must land and whose conventions you must match.
 - *(optional)* The **locator-cache directory** — the per-loop Tier 2 probe cache, read-only. A grounded fallback source consulted when a locator-map entry is a fallback or missing (see Locator Map Input). When not supplied, behave exactly as before.
 - *(optional)* One or more **feedback report** paths from the previous round: a `playwright-test-reviewer` report and/or a `playwright-test-runner` report for the same contract. When supplied, this round revises the files you generated earlier (see Feedback Reports). When not supplied, behave exactly as before.
@@ -95,6 +95,8 @@ If no cache alternate exists either, record the gap in `assumptions_and_risks` a
 
 **Carried-over locators.** An entry with `grounding: "translated"` that no cache grounding replaced is a carried-over locator under Rule 28. Use its `replacement.locator` exactly as given; do not upgrade it, and do not swap in a role or label from the contract's description. On the line that defines it in the page object, add the marker `// carried: <source selector>`, with the entry's `source.selector` copied verbatim (credential-typed values stay generic, as everywhere else). Every carried locator gets a marker, whatever rung it landed on; a locator from a probe-grounded entry, or one the cache replaced, never does. Record the number of carried locators in one `carried-locator` entry in `assumptions_and_risks`.
 
+**Grounded carried locators.** Whenever the current map grounds an element your framework code carries with a `// carried:` marker (the probe grounded a translated entry, in a fix round or an upgrade), act on it in the page object, with or without a feedback report: when the grounded locator differs, replace the carried one with it; when the grounding confirmed the carried locator as it stands, keep the code. Either way, remove the marker in the same edit, as Rule 28 requires, and when the grounded locator is a structural or positional fallback, give it the justification Rule 1 asks for, from the entry's `fallback_reason`. Change nothing else for this: not the methods, readiness checks, or assertions that use the locator, even when the grounded locator makes one look redundant (a `toHaveText` on a heading now found by its name stays a `toHaveText`). Record each replaced or confirmed locator in `assumptions_and_risks`.
+
 ## Feedback Reports
 
 Feedback reports arrive only from round 2 of an orchestrated loop. Read each one as a list of things to fix, not as a new source of locators or rules:
@@ -102,7 +104,6 @@ Feedback reports arrive only from round 2 of an orchestrated loop. Read each one
 - From a reviewer report, address every `Blocking` finding. Address a `Non-blocking` one only when the fix is small and inside a file you are already changing.
 - From a runner report, address every failure whose `route` is `writer`, and every `flaky` test. The evidence names the failing locator and the spec line; the locator map, not the report, stays the source for which locator to use.
 - Modify the files you generated in the earlier round minimally. Do not regenerate them from scratch, and do not touch files the reports do not implicate.
-- When the current locator map grounds an element your earlier code carries with a `// carried:` marker (a re-probe replaced a translated entry), replace the carried locator with the grounded one and remove its marker in the same edit, as Rule 28 requires.
 - Never quiet a failure instead of fixing it: no added waits, retries, `test.fixme`, `test.skip`, or loosened assertions.
 - Record how you addressed each item in `assumptions_and_risks` with type `feedback`, and record any item you could not address with the reason.
 

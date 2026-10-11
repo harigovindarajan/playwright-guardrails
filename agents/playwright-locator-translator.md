@@ -1,6 +1,6 @@
 ---
 name: playwright-locator-translator
-description: Use this agent in translate mode to convert a test contract's origin locators straight into Playwright locators, with no browser and no live app, and persist them as a locator map for the writer. It translates only what each source selector already states (a test-id attribute to getByTestId, a link-text lookup to a link role), never infers a role or name the source does not give, and marks every entry as translated so the generated code carries it as a carried-over locator. Use instead of playwright-dom-probe when the source suite's locators are trusted and a live probe is not wanted.
+description: Use this agent to write the first locator map of a migration (the default; /migrate's --locators=trace) by converting a test contract's origin locators straight into Playwright locators, with no browser and no live app, and persist them as a locator map for the writer. It translates only what each source selector already states (a test-id attribute to getByTestId, a link-text lookup to a link role), never infers a role or name the source does not give, and marks every entry as translated so the generated code carries it as a carried-over locator. The probe later grounds carried locators from the runs' traces; a live probe writes the first map instead only when the user asks for one.
 model: sonnet
 effort: medium
 color: pink
@@ -74,7 +74,7 @@ A framework with no Playwright config is not a failure: translate with Playwrigh
 
 For each origin locator, in order:
 
-1. **Tier 1: page objects.** If the page-objects directory was supplied and the page object for this element's page already defines a locator for it, reuse that locator with `grounding: "live-snapshot"` and `tier_source: "page-object"`, as the probe does for a Tier 1 hit.
+1. **Tier 1: page objects.** If the page-objects directory was supplied and the page object for this element's page already defines a locator for it that is not marked `// carried:` (the Tier 1 rule in the `playwright-guardrails:locator-map` skill), reuse that locator with `grounding: "live-snapshot"` and `tier_source: "page-object"`, as the probe does for a Tier 1 hit.
 2. **Tier 2: locator cache.** If the locator-cache directory was supplied and holds a grounded entry for this page, state, auth-context, and element, reuse it with `grounding: "live-snapshot"` and `tier_source: "cache"`, as the probe does for a Tier 2 hit.
 3. **Translate** only on a miss in both.
 

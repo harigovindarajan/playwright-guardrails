@@ -3,6 +3,77 @@
 All notable changes to the **playwright-guardrails** plugin are documented here.
 This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [0.7.0] — 2026-10-11
+
+Trace-first grounding: the probe grounds locators from the traces of real test runs by
+default, and drives the live app only when you ask for it. Second half of
+[#8](https://github.com/harigovindarajan/playwright-guardrails/issues/8).
+
+- **The probe's default mode is `trace`.** It grounds against DOM snapshots recorded in a
+  test run's Playwright trace, rendered offline by Playwright's own
+  `npx playwright trace snapshot` (Playwright 1.63 or later), so it needs no URL, no auth, and
+  no journey to drive, and the app is never contacted. It walks the same Rule 1 ladder, with
+  the same tiers, map, and cache. Trace groundings are recorded as `live-snapshot` with the
+  new `tier_source: trace`. Live probing is unchanged and runs only with `mode: live`.
+  - **Scope `failing`** grounds only the elements a failed run implicates, from the snapshot
+    at the failure, against the contract's description.
+  - **Scope `carried`** grounds every translated entry from a passing run, anchored on the
+    carried locator: a candidate is accepted only if it selects the same element the run
+    used. A grounding that picks the carried locator itself confirms it.
+  - **Trace hygiene.** A trace stores typed text, passwords included, in action titles, and a
+    rendered snapshot restores form values. The probe lists actions only through a pinned
+    redaction filter, starts every snippet by blanking form values, runs only pinned trace
+    commands (snippets are written with the Write tool, and nothing is deleted), and never runs
+    the ones that print parameters, requests, or raw snapshots.
+- **`/migrate` is trace-first.** `--locators=trace` (the default) translates the first map,
+  runs with traces on, and on a locator failure grounds the element from that run's trace,
+  with no base URL. When a trace cannot resolve it, `/migrate` stops and offers
+  `--locators=live`; it never switches to live by itself. `--locators=live` is the 0.6.0
+  `probe` behaviour, with its grounding gate. `translate` and `probe` still work as aliases
+  for this release.
+- **New `/migrate --upgrade`.** Upgrades a finished migration's carried locators from the
+  traces its passing runs saved: one trace-mode probe call, a per-test summary of what would
+  change, then, after you confirm, write → review → run rounds and a re-run of every test
+  whose shared files changed.
+- **Helper preflight in `/migrate`.** When the draft gate stops only on helpers the drafter
+  was not given, and their definitions exist under the source root, `/migrate` names the files
+  and offers to re-draft with them.
+- **The Tier 2 cache has one definition.** Its file format and rules moved from the probe into
+  `skills/locator-map/`, which the probe, translator, and writer all preload. Cache entries
+  record `tier_source` (`live` or `trace`).
+- **Rule 28** lets a grounding confirm a carried locator as it stands; its marker comes off
+  either way. The writer applies a grounded carried locator whenever the current map has one,
+  not only with a feedback report, so the upgrade's apply round needs none.
+- **`/migrate` asks before the first run of a destructive spec in each invocation**, so
+  upgrade runs are covered too.
+
+**From the end-to-end runs** (a fresh three-test migration, and `--upgrade` over a nine-spec
+migration plus one brownfield test), fixed before release:
+
+- **The current map is the one the code runs with.** An upgrade map the user chose not to apply
+  had become the "current" map, so a later fix round would have applied the declined upgrade
+  and a later `--upgrade` would have skipped the test. The current map is now the version the
+  test's latest run used, and an unapplied upgrade map stays a proposal.
+- **Map versions are never overwritten.** A new map takes the next free version for its test
+  case; `runs/index.jsonl` records which version each round used.
+- **A fix round grounds sibling defects too.** In scope `failing`, the probe also counts the
+  other carried locators the failure snapshot shows, and grounds any that would fail the same
+  way. Two identical "Add to cart" duplicates had cost a round each.
+- **Sameness is checked, not judged.** An upgrade is accepted only when the count snippet
+  reports the candidate is the anchor element itself; a container or a child is a different
+  element.
+- **The cache write-back is checked before returning,** and the manifest reports
+  `cache_written`. An upgrade run had skipped it.
+- **An upgrade changes only locators.** The writer had also weakened a readiness assertion
+  (`toHaveText` to `toBeVisible`) while swapping a locator.
+- **The probe runs at `medium` effort.** At `low`, trace-mode runs skipped steps: shell
+  shortcuts, a snippet without the blanking preamble, the cache write-back.
+
+**Fixed:** a page-object locator still marked `// carried:` was reused as a grounded Tier 1
+locator (seen in a brownfield batch's map), relabelling an unverified locator as verified and
+hiding it from any upgrade. The locator-map skill now says a marked locator is never a Tier 1
+source, and the probe and translator follow it.
+
 ## [0.6.0] — 2026-10-10
 
 Translate mode: migrate a whole suite to a running state by carrying its existing locators

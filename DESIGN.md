@@ -72,10 +72,12 @@ orchestrator runs them in sequence: your own session, a migration pipeline, or t
    inventory, risk flags, and a dependency-ordered sequence.
 2. [`playwright-contract-drafter`](agents/playwright-contract-drafter.md): source tests +
    helpers → one contract file per test case.
-3. [`playwright-dom-probe`](agents/playwright-dom-probe.md): contract + live app → a
-   persisted `locator_map` file per test case. In translate mode,
-   [`playwright-locator-translator`](agents/playwright-locator-translator.md) takes this
-   slot instead: contract + framework config → the same map shape, unverified.
+3. [`playwright-locator-translator`](agents/playwright-locator-translator.md): contract +
+   framework config → the first `locator_map` file per test case, unverified.
+   [`playwright-dom-probe`](agents/playwright-dom-probe.md): contract + a snapshot of the real
+   app → a grounded `locator_map` file. By default the snapshot comes from the trace of a test
+   run; with `--locators=live` the probe drives the app and also writes the first map in the
+   translator's place.
 4. [`playwright-test-writer`](agents/playwright-test-writer.md): contract + `locator_map` +
    framework → spec and supporting files.
 5. [`playwright-test-reviewer`](agents/playwright-test-reviewer.md): spec + contract →
@@ -85,15 +87,15 @@ orchestrator runs them in sequence: your own session, a migration pipeline, or t
 
 Two design choices make this work:
 
-- **The probe is the only agent that explores the live app.** It drives the contract
-  journey to reach each page state, snapshots it, and grounds each locator to the
-  highest user-facing rung matching exactly one element, then stops. It does not
-  re-drive to verify individual locators after the snapshot; that post-snapshot
-  verification loop is the failure mode this design avoids. Isolating the one
-  live-DOM step keeps the rest deterministic and makes locator quality its own
-  measurable signal instead of hiding inside the writer's output. The runner also
-  launches a browser, but only by running the generated spec. It never explores the app
-  or grounds a locator.
+- **The probe is the only agent that grounds a locator.** It takes a snapshot of a page
+  state the real app rendered, by default one recorded in a test run's trace and, in live
+  mode, one it drove the app to, and grounds each locator to the highest user-facing rung
+  matching exactly one element, then stops. It does not re-drive to verify individual
+  locators after the snapshot; that post-snapshot verification loop is the failure mode this
+  design avoids. Isolating the one grounding step keeps the rest deterministic and makes
+  locator quality its own measurable signal instead of hiding inside the writer's output.
+  The runner launches a browser too, but only by running the generated spec. It never
+  explores the app or grounds a locator.
 
 - **The writer is a pure function of its inputs.** Because it consumes a persisted map
   instead of probing, its output is reproducible, and a stored map can be replayed straight
@@ -139,32 +141,63 @@ in a complete-looking contract would be reproduced faithfully by every stage aft
 The drafter never touches the live app and never writes Playwright code, so it needs neither
 a browser nor the rules.
 
-## Translate mode: carry locators over first, ground them later
+## Trace-first: carry locators over, let the run prove them, ground from its trace
 
-The probe grounds every locator against the live app before the writer generates anything.
-That is the right default, but it is not always the right first step. An established suite's
+Until 0.6.0 the probe grounded every locator against the live app before the writer generated
+anything. It drove the contract's journey for every page state, which is the most expensive
+stage in the pipeline: a reachable environment with test data and auth before a single test is
+migrated, and a model round-trip for every state it reaches. Yet an established suite's
 selectors already work against the real app; they only fail Playwright's locator strategy.
-Probing every one of them up front costs time, and it needs a live environment with test data
-and auth before a single test has been migrated.
 
-Translate mode is the alternative first pass. [`playwright-locator-translator`](agents/playwright-locator-translator.md)
+So the default first pass is translation. [`playwright-locator-translator`](agents/playwright-locator-translator.md)
 converts each origin locator into the Playwright locator that selects the same thing, with no
 browser, and writes it into the same locator-map shape with `grounding: "translated"`. The
-writer is unchanged except that it marks every translated locator `// carried: <source
-selector>`, and Rule 28 makes a marked locator residual risk the test run settles, not a
-Rule 1 violation. The pipeline runs through to execution, and a test that runs green is
-migrated.
+writer marks every translated locator `// carried: <source selector>`, and Rule 28 makes a
+marked locator residual risk the test run settles, not a Rule 1 violation. The pipeline runs
+through to execution, and a test that runs green is migrated.
 
 The translator is a separate agent rather than a probe flag because it is a different role
-with different tools: the probe grounds against observed DOM and needs a browser, the
-translator converts text and needs neither a shell nor the app. It translates only what a
-source selector already states. Turning a CSS selector into a role locator because the
-contract's description names a role would be grounding without evidence, so the translator
-leaves that to a later grounding step and records the description for it.
+with different tools: the probe grounds against observed DOM, the translator converts text and
+needs neither a shell nor the app. It translates only what a source selector already states.
+Turning a CSS selector into a role locator because the contract's description names a role
+would be grounding without evidence, so the translator leaves that to the probe and records
+the description for it.
 
-The runner keeps a trace of every run in translate mode. A later release grounds carried
-locators from those traces, offline, and writes an upgraded map version; see
-[#8](https://github.com/harigovindarajan/playwright-guardrails/issues/8).
+Every run keeps a Playwright trace, and a trace records a DOM snapshot of the page around every
+action the test took. That is the evidence grounding needs, already collected, of the real app,
+at the moment the test used it. Since 0.7.0 the **probe grounds from traces by default**:
+Playwright's own trace tooling (`npx playwright trace snapshot`, 1.63 or later) renders a
+recorded snapshot in a local headless browser and runs the probe's counting code against it,
+with the page's resources served from the trace, so the app is never contacted. The probe
+uses it in two places:
+
+- **A failing locator, in the feedback loop.** When the runner routes a failure to the probe,
+  the probe grounds only that element, from the snapshot the trace recorded at the failure,
+  against the contract's description, the same judgment a live probe makes. No URL is needed,
+  so a migration without a reachable environment no longer stops at the first locator failure.
+  When the trace cannot resolve the element, `/migrate` stops and offers live probing instead
+  of switching to it.
+- **The carried locators of passing tests, on request (`/migrate --upgrade`).** Here the
+  carried locator is an anchor: it resolved to one element when the run used it, so the probe
+  accepts a higher-rung candidate only if it selects that same element in the recorded
+  snapshot. Upgrading is optional polish, a separate invocation that shows what would change
+  and asks before the writer rewrites anything.
+
+A trace grounding is recorded as `grounding: "live-snapshot"` with `tier_source: "trace"`: the
+snapshot is of the real app, and only the audit field says where it came from. Trace mode is a
+mode of the probe rather than a new agent because the role is the same, ground a locator in a
+snapshot on the Rule 1 ladder, with the same tiers, map, and cache; only the snapshot source
+differs. **Live probing stays available, never chosen automatically**: `--locators=live` brings
+back the 0.6.0 default, for a user who wants every locator grounded against the app before
+anything is written.
+
+Two hygiene rules come with traces. A trace stores the test's typed text, passwords included,
+in its action titles, and a rendered snapshot restores every form value. So the probe lists
+actions only through a pinned redaction filter, blanks every form value before reading a
+snapshot, and is forbidden the trace subcommands that print parameters, requests, or raw
+snapshots. And a page-object locator still marked `// carried:` is never reused as grounded
+(the Tier 1 rule in the locator-map skill), so an unverified locator cannot be relabelled as
+verified and hidden from the upgrade.
 
 ## Planning a suite is a separate role from drafting a test
 
@@ -232,11 +265,11 @@ Siblings need something to sequence them, and until 0.5.0 that was left entirely
 caller. [`skills/migrate/`](skills/migrate/SKILL.md) is a user-invocable skill that documents
 and drives the whole sequence. The main session runs it and spawns each agent in turn, so it
 is a session following a procedure, not an agent calling agents. The procedure is plan, draft,
-probe, then a write → review → run loop, with three gates:
+translate (or, on request, live-probe), then a write → review → run loop, with three gates:
 
-- **Open questions.** A contract with a `blocking` open question stops before the probe. The
-  drafter was told never to guess; the orchestrator must not guess in its place.
-- **Grounding.** The probe's map must have `grounded / (grounded + contract_note)` of at least
+- **Open questions.** A contract with a `blocking` open question stops before the first map.
+  The drafter was told never to guess; the orchestrator must not guess in its place.
+- **Grounding (live mode).** The live probe's map must have `grounded / (grounded + contract_note)` of at least
   `0.8` by default, and a `partial` map stops whatever its ratio. A threshold of `1.0` would
   stop every contract with a legitimate deliberate fallback, such as a step past a
   destructive action the probe refuses to take. `0.8` means the writer works mostly from
@@ -251,9 +284,9 @@ probe, then a write → review → run loop, with three gates:
 Routing follows the runner's suggested route, with `human` over `probe` over `writer` when
 failures in one run disagree. Two agent changes made routing possible. The writer gained an
 optional feedback-reports input, because a pure function given the same inputs twice
-produces the same spec twice. And on a `probe` route, the orchestrator re-runs the probe
-without its reuse tiers, because the page objects and cache would otherwise hand back the
-very locator that just failed.
+produces the same spec twice. And on a `probe` route, the orchestrator runs the probe again,
+from the failure's trace by default, without its reuse tiers, because the page objects and
+cache would otherwise hand back the very locator that just failed.
 
 **Nothing a round produces is overwritten.** Each runner invocation keeps its report, log,
 and traces in its own `runs/<testcase>/round-<n>/attempt-<k>/` folder, and the locator map is
@@ -271,10 +304,11 @@ dependencies, config files, CI jobs, and the source tests themselves is left to 
 
 ## Mechanical vs. reasoning roles
 
-The probe, translator, and runner are mostly **mechanical**: the probe extracts (drive →
-snapshot → ground), the translator converts a selector to its equivalent, and the runner
+The probe, translator, and runner are mostly **mechanical**: the probe extracts (find or
+reach a state → snapshot → ground), the translator converts a selector to its equivalent, and the runner
 runs a command and reads its report. Running them at high reasoning
-effort buys little and dominates wall-clock. The other four carry the migration's quality and
+effort buys little and dominates wall-clock, so they run at `medium`. The probe ran at `low`
+until 0.7.0, when trace mode made it as rule-dense as the runner. The other four carry the migration's quality and
 run at `high`. The drafter reads what each existing test intends, and every later stage
 inherits that reading, so a shallow contract costs more than the extra reasoning does. The
 writer turns contract and map into code that has to fit the framework's conventions and pass
@@ -289,7 +323,7 @@ plugin rather than left to the session default:
 | `playwright-migration-planner` | `opus` | `high` | Suite-wide dependency resolution and ordering is reasoning, and a wrong order costs every later stage. It runs once per migration, so the cost is paid once. |
 | `playwright-contract-drafter` | `sonnet` | `high` | Synthesizing what an existing test intends, through its helpers, is the input every later stage builds on. |
 | `playwright-locator-translator` | `sonnet` | `medium` | Converting a selector to its equivalent is mostly mechanical, but it reads the target config and must refuse every conversion the source does not support. |
-| `playwright-dom-probe` | `sonnet` | `low` | Mechanical drive → snapshot → ground; scripted and deterministic. |
+| `playwright-dom-probe` | `sonnet` | `medium` | Snapshot → ground is mechanical, but trace mode is rule-dense: matching entries to actions, proving a candidate is the same element, finding sibling defects, and keeping to pinned commands. At `low`, real runs skipped steps. Probe calls are rare (fix rounds and `--upgrade`), so the extra reasoning is cheap. |
 | `playwright-test-writer` | `sonnet` | `high` | Generation that must match framework conventions, respect the rules, and act on review and run feedback. |
 | `playwright-test-reviewer` | `sonnet` | `high` | Weighs tradeoffs: classification and the verdict. |
 | `playwright-test-runner` | `sonnet` | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
