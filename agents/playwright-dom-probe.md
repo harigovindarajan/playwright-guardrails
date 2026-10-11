@@ -2,7 +2,7 @@
 name: playwright-dom-probe
 description: Use this agent to ground a test contract's locators against a snapshot of the real app and emit a persisted, structured locator map for the writer to generate from. By default it grounds from the saved Playwright trace of a test run, offline; it drives the live application only when the caller asks for live mode.
 model: sonnet
-effort: low
+effort: medium
 color: cyan
 tools: ["Read", "Grep", "Glob", "Bash", "Write"]
 skills: ["playwright-guardrails:rules", "playwright-guardrails:locator-map", "playwright-guardrails:contract"]
@@ -227,7 +227,7 @@ That is two snapshot commands per snapshot, describe then count, each taking a f
 1. **Preflight.** Read the canonical rules/checklist. Run the capability check once. Read each contract, its current locator map, and its runner report.
 2. **Pick the target entries.**
    - Scope `carried`: every entry with `grounding: "translated"`.
-   - Scope `failing`: the entries the report's failures implicate: each failure's `locator_map_entry`, or the entry whose `replacement.locator` is the failure's `failing_locator`. Ground nothing else in a fix round, so the writer's change stays small.
+   - Scope `failing`: the entries the report's failures implicate: each failure's `locator_map_entry`, or the entry whose `replacement.locator` is the failure's `failing_locator`. Ground nothing else in a fix round except the siblings step 8 finds, so the writer's change stays small.
    - Carry every other entry forward unchanged.
 3. **Resolve Tier 1 and Tier 2** for each target entry (Grounding core). The caller passes no page-objects directory or cache in scope `failing`, so a failing locator is never replayed from either.
 4. **Pick the trace.** Take the trace files the runner report lists for the test. In scope `failing`, use the trace of the failing attempt; in scope `carried`, the report is from a passing run, and any of its traces will do. A report that lists no trace (tracing was off) leaves its target entries ungrounded (step 8).
@@ -243,13 +243,15 @@ That is two snapshot commands per snapshot, describe then count, each taking a f
    - a failed action → `before` (a failed action has no `action` snapshot).
    If the command reports no snapshot for that phase, try the action's other phase once.
 8. **Ground from the snapshot** (Describe, then Count), walking the ladder (Grounding core):
-   - **Scope `carried`: anchor on the carried locator.** It resolved to one element when the run used it; if it does not resolve to exactly one in the snapshot, you cannot prove which element it meant, so leave the entry unchanged. Accept the highest-rung candidate that matches exactly one element **and is the anchor element**. That proves the new locator selects what the carried one did. When the winner is the carried locator itself, the grounding confirms it.
+   - **Scope `carried`: anchor on the carried locator.** It resolved to one element when the run used it; if it does not resolve to exactly one in the snapshot, you cannot prove which element it meant, so leave the entry unchanged. Accept the highest-rung candidate that matches exactly one element **and is the anchor element**. That proves the new locator selects what the carried one did. Accept only a candidate the Count snippet reported as the anchor element (`el === ref` true); never decide sameness by reading markup. A container or a descendant of the anchor is a different element: its text, and what an action on it does, can differ. When no candidate is the anchor itself, leave the entry unchanged. When the winner is the carried locator itself, the grounding confirms it.
    - **Scope `failing`: no anchor**, because the carried locator is what failed. Ground the element from the contract's description of it and of the step, against the `body` description, exactly as a live probe would: the highest-rung candidate that matches exactly one element that is the element the contract describes. When several elements fit the description and nothing in the contract tells them apart, do not choose: it stays ungrounded.
+   - **Scope `failing`: siblings.** In the same Count snippet, also count the carried locator of every other `translated` entry whose page state this snapshot shows, whether or not the run reached its step. One that does not match exactly one element would fail the same way in a later round, so ground it now, as a failing entry, from the contract's description. Leave the ones that match exactly one element unchanged; they are for an upgrade. This keeps a run of similar defects (one per product card, say) from costing a round each.
 9. **Write each grounded entry** with `grounding: "live-snapshot"`, `tier_source: "trace"`, `resolves_to_one: true`, `state_reached: true`, provenance per the ladder rules (`contract-hint-confirmed` when the carried locator was confirmed), and a note naming the trace path, the action id, and the phase. Write it back to the cache when one was supplied.
 10. **Record each target entry you could not ground:**
     - scope `carried`: leave it `translated` exactly as it was, and add a note with the reason (`not exercised in the traced run`, `carried locator not unique in the snapshot`, `no candidate matched exactly one element`, `no trace in the run report`);
     - scope `failing`: make it a `contract-note` whose `fallback_reason` names the trace and action and says why. It is a blocked cause, so the map is `partial`, and the orchestrator stops for a human rather than guessing.
 11. **Close the trace** before opening the next, and close the last one before you return. Leave your snippet files where they are.
+12. **Check the cache.** When a locator-cache directory was supplied, every entry you grounded from a trace this run must be in it before you return: read the cache files you wrote and add any entry that is missing. The cache is optional for the caller's correctness, but writing it is not optional for you; it is how a later test reuses what you grounded instead of carrying the locator over again. Report the count in the manifest's `cache_written`.
 
 Persist the map (Grounding core). It holds every entry of the current map, target entries updated in place. Record in `assumptions_and_risks` how many target entries you grounded and, by reason, how many you could not.
 
@@ -376,6 +378,7 @@ Use this schema:
   "contracts": ["path/to/contract.md"],
   "output_dir": "path/to/locator-maps",
   "tier_stats": { "page-object": 0, "cache": 0, "live": 0, "trace": 6 },
+  "cache_written": 6,
   "locator_map_files": [
     {
       "contract": "path/to/contract.md",
@@ -449,6 +452,7 @@ Allowed enum values:
 - manifest `mode`: `trace` or `live`
 - each persisted locator-map file's top-level `status`: `completed` or `partial` (see Persist the Locator Map)
 - `tier_stats`: an object with integer counts for keys `page-object`, `cache`, `live`, and `trace` (present in every `completed` manifest; omitted from a `FAILED` manifest)
+- `cache_written`: the number of cache entries this run wrote or overwrote. When a locator-cache directory was supplied, it equals `tier_stats.live + tier_stats.trace`; `0` when none was supplied (present in every `completed` manifest)
 - `failure.type`: `missing-rules`, `missing-locator-map-shape`, `missing-contract-shape`, `missing-contract`, `ambiguous-contract`, `missing-output-dir`, `missing-trace-cli`, `missing-scratch-dir`, `missing-locator-map`, `missing-run-report` (trace mode), `missing-playwright-cli`, or `unreachable-app` (live mode)
 - inside each locator-map file's entries: `source.source_type`, `replacement.rung`, `grounding`, `tier_source`, and `provenance` take the values defined in the preloaded `playwright-guardrails:locator-map` skill — the single source for entry-level enums. Do not restate them here.
 

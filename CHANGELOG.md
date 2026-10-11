@@ -47,6 +47,28 @@ default, and drives the live app only when you ask for it. Second half of
 - **`/migrate` asks before the first run of a destructive spec in each invocation**, so
   upgrade runs are covered too.
 
+**From the end-to-end runs** (a fresh three-test migration, and `--upgrade` over a nine-spec
+migration plus one brownfield test), fixed before release:
+
+- **The current map is the one the code runs with.** An upgrade map the user chose not to apply
+  had become the "current" map, so a later fix round would have applied the declined upgrade
+  and a later `--upgrade` would have skipped the test. The current map is now the version the
+  test's latest run used, and an unapplied upgrade map stays a proposal.
+- **Map versions are never overwritten.** A new map takes the next free version for its test
+  case; `runs/index.jsonl` records which version each round used.
+- **A fix round grounds sibling defects too.** In scope `failing`, the probe also counts the
+  other carried locators the failure snapshot shows, and grounds any that would fail the same
+  way. Two identical "Add to cart" duplicates had cost a round each.
+- **Sameness is checked, not judged.** An upgrade is accepted only when the count snippet
+  reports the candidate is the anchor element itself; a container or a child is a different
+  element.
+- **The cache write-back is checked before returning,** and the manifest reports
+  `cache_written`. An upgrade run had skipped it.
+- **An upgrade changes only locators.** The writer had also weakened a readiness assertion
+  (`toHaveText` to `toBeVisible`) while swapping a locator.
+- **The probe runs at `medium` effort.** At `low`, trace-mode runs skipped steps: shell
+  shortcuts, a snippet without the blanking preamble, the cache write-back.
+
 **Fixed:** a page-object locator still marked `// carried:` was reused as a grounded Tier 1
 locator (seen in a brownfield batch's map), relabelling an unverified locator as verified and
 hiding it from any upgrade. The locator-map skill now says a marked locator is never a Tier 1

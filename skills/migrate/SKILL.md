@@ -47,12 +47,19 @@ From the migration dir, use these sub-paths **for every round of every test case
 reports, maps, and the cache line up across rounds:
 
 - `contracts/`: drafter output, filename pattern `{testcase}-contract.md`
-- `locator-maps/`: probe output, one file per probe run, filename pattern
-  `{testcase}-locator-map.r<n>.json`, where `<n>` is the round the probe ran for (`r1` for the
-  first probe). You fill in `<n>` before passing the pattern, so the probe sees, for example,
-  `{testcase}-locator-map.r2.json`. A re-probe never replaces an earlier map; the highest
-  version is the **current map**, and every earlier one stays as evidence of what a past round
-  ran with.
+- `locator-maps/`: translator and probe output, one file per run, filename pattern
+  `{testcase}-locator-map.r<n>.json`. `<n>` is the **next free version** for that test case:
+  one more than the highest version already on disk (`r1` when there is none). Versions count
+  map writes, not rounds; `runs/index.jsonl` records which version each round ran with. You
+  fill in `<n>` before passing the pattern, so the agent sees, for example,
+  `{testcase}-locator-map.r2.json`. **Never overwrite a map version**: every earlier one stays
+  as evidence of what a past round ran with.
+- **The current map** of a test case is the version its latest run used (`map` in
+  `runs/index.jsonl`), or, within a migration, the newer version the probe just wrote for the
+  round you are about to run. A map is current because a round runs with it, not because it is
+  the newest file: a map `--upgrade` wrote that the user chose not to apply never becomes
+  current. It stays on disk as a proposal, and a later fix round or upgrade starts from the
+  version the code actually runs with.
 - `locator-cache/`: the probe's Tier 2 cache, shared by every test case in this migration
 - `reports/<testcase>/`: every agent's JSON for that test case, written by you as
   `<stage>-round-<n>.json`. An agent you run on several test cases at once (the planner, or a
@@ -113,7 +120,7 @@ paths, and `contracts/` as the output directory. Persist the manifest.
 ### 3. Ground the first map
 
 **Default (`trace`): translate.** Spawn `playwright-locator-translator` with the contract(s),
-the framework root, `locator-maps/` as the output directory, the `r1` filename pattern,
+the framework root, `locator-maps/` as the output directory, the filename pattern with the next free version (`r1` for a new test case),
 `locator-cache/` and the page-objects dir when they exist (both read-only for it), and the
 `storageState` path when there is one (only its name is used). Persist the manifest.
 
@@ -129,7 +136,7 @@ locators).
 which costs far more time and tokens than translating and grounding from traces. Never choose it
 yourself: use it only when the user passed `--locators=live` or asked for it in words. Spawn
 `playwright-dom-probe` with `mode: live`, the contract(s), the base URL, the `storageState`,
-`locator-maps/` as the output directory, the `r1` filename pattern above, `locator-cache/`, and
+`locator-maps/` as the output directory, the filename pattern with the next free version, `locator-cache/`, and
 the page-objects dir when it exists. Persist the manifest.
 
 **Gate: grounding (live only).** Stop the test case for a human when any of these is true:
@@ -194,8 +201,8 @@ Run rounds `n = 1, 2, ...` up to the round cap.
      hosts the probe blocks by default in the user's Playwright config. Re-run only after the
      user has made the change; never route an obstructed page to the probe or the writer.
    - Any failure routed `probe`: ground the failing locator again before the next round,
-     writing the **next** round's map (after round 2, `{testcase}-locator-map.r3.json`), so the
-     earlier map is kept and the new one becomes the current map. Pass **neither** the
+     writing the next free map version, so the earlier map is kept and the new one is the current
+     map for the next round. Pass **neither** the
      page-objects dir nor the locator cache, so the probe grounds afresh instead of replaying
      the locator that just failed.
      - `trace` mode: spawn the probe with `mode: trace` and `scope: failing`, the contract, its
@@ -247,23 +254,25 @@ grounded, user-facing locators is optional polish, run as its own invocation ove
 migration dir, never inside a migration. It drives nothing: the probe grounds from the traces
 the passing runs already saved.
 
-1. **Find what to upgrade.** For each test case, take its current map (the highest `r<n>` in
-   `locator-maps/`), and skip the test case unless the map has `translated` entries. From
+1. **Find what to upgrade.** For each test case, take its current map (the version its latest
+   run used), and skip the test case unless the map has `translated` entries. From
    `runs/index.jsonl`, take the test case's latest entry with at least one pass, no `fail`, no
    `flaky`, and a non-empty `traces` list, and the runner report it points to. A test case with
    no such run has no passing trace: report it as not upgradable and skip it.
 2. **Ground.** Spawn one `playwright-dom-probe` for all of them with `mode: trace` and
    `scope: carried`: each contract with its current map and that passing run report, the
    framework root, `scratch/`, `locator-cache/`, and the page-objects dir when it exists. Each
-   test case's map is written as `r<n'>`, where `n'` is one more than the highest round in its
-   index entries. Save the manifest as `reports/batch-<b>/upgrade-round-1.json`.
+   test case's map is written as its next free version. Save the manifest as
+   `reports/batch-<b>/upgrade-round-1.json`.
 3. **Show the result.** Per test case: each carried locator upgraded (old → new, or confirmed as
    it stands) and each left carried, with its reason. If nothing was upgraded, stop here.
 4. **Ask before applying.** Applying rewrites page objects and re-runs specs. Suggest that the
    user commit first, so they can revert the upgrade with git (you never touch git), and wait
    for their go-ahead.
-5. **Apply.** For each test case with upgraded entries, run the feedback loop (step 4) from round
-   `n'` with the new map as the current map, the round cap counted from `n'`. The writer swaps
+5. **Apply.** For each test case the user chose, run the feedback loop (step 4) from round
+   `n'`, one more than the highest round in its index entries, with the upgrade map as the map
+   for that round, the round cap counted from `n'`. For the test cases the user did not choose,
+   the upgrade maps stay proposals (see the current map above). The writer swaps
    each grounded locator and removes its marker (Rule 28); the reviewer and the runner check the
    result, and failures route as in step 4. Then finish with step 5, which re-runs every done
    test whose shared files the upgrade changed.

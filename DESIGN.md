@@ -307,7 +307,8 @@ dependencies, config files, CI jobs, and the source tests themselves is left to 
 The probe, translator, and runner are mostly **mechanical**: the probe extracts (find or
 reach a state → snapshot → ground), the translator converts a selector to its equivalent, and the runner
 runs a command and reads its report. Running them at high reasoning
-effort buys little and dominates wall-clock. The other four carry the migration's quality and
+effort buys little and dominates wall-clock, so they run at `medium`. The probe ran at `low`
+until 0.7.0, when trace mode made it as rule-dense as the runner. The other four carry the migration's quality and
 run at `high`. The drafter reads what each existing test intends, and every later stage
 inherits that reading, so a shallow contract costs more than the extra reasoning does. The
 writer turns contract and map into code that has to fit the framework's conventions and pass
@@ -322,7 +323,7 @@ plugin rather than left to the session default:
 | `playwright-migration-planner` | `opus` | `high` | Suite-wide dependency resolution and ordering is reasoning, and a wrong order costs every later stage. It runs once per migration, so the cost is paid once. |
 | `playwright-contract-drafter` | `sonnet` | `high` | Synthesizing what an existing test intends, through its helpers, is the input every later stage builds on. |
 | `playwright-locator-translator` | `sonnet` | `medium` | Converting a selector to its equivalent is mostly mechanical, but it reads the target config and must refuse every conversion the source does not support. |
-| `playwright-dom-probe` | `sonnet` | `low` | Mechanical snapshot → ground, from a recorded trace or a scripted live drive; deterministic. |
+| `playwright-dom-probe` | `sonnet` | `medium` | Snapshot → ground is mechanical, but trace mode is rule-dense: matching entries to actions, proving a candidate is the same element, finding sibling defects, and keeping to pinned commands. At `low`, real runs skipped steps. Probe calls are rare (fix rounds and `--upgrade`), so the extra reasoning is cheap. |
 | `playwright-test-writer` | `sonnet` | `high` | Generation that must match framework conventions, respect the rules, and act on review and run feedback. |
 | `playwright-test-reviewer` | `sonnet` | `high` | Weighs tradeoffs: classification and the verdict. |
 | `playwright-test-runner` | `sonnet` | `medium` | Running is scripted, but classifying a failure and choosing its route weighs evidence within a fixed set of classes. |
