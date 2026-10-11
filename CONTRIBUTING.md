@@ -15,9 +15,10 @@ agents. There is no second copy to keep in sync.
 
 - [`skills/rules/`](skills/rules/) — the framework rules and the review checklist. The
   probe, writer, and reviewer all consume them.
-- [`skills/locator-map/`](skills/locator-map/) — the shape of the locator map. The probe
-  writes maps in it, the writer reads them against it, and the runner reads them to route
-  locator failures. The reviewer does **not** preload it and must not: it stays blind to the
+- [`skills/locator-map/`](skills/locator-map/) — the shape of the locator map, the Tier 1
+  rule, and the Tier 2 cache file. The probe and the translator write maps in it, the writer
+  reads them against it, and the runner reads them to route locator failures. The probe is
+  the only agent that writes the cache. The reviewer does **not** preload it and must not: it stays blind to the
   map by design.
 - [`skills/contract/`](skills/contract/): the shape of a test contract, including the risk
   vocabulary and open questions. The drafter writes contracts in it; the probe, writer,
@@ -55,8 +56,8 @@ expected finding.
 The seven agents live in [`agents/`](agents/). Each is a single-role sub-agent that
 loads its canonical sources itself via its frontmatter `skills:` field — don't pass rule
 paths in as inputs, and keep each agent to its one role (the planner never drafts, the
-drafter never writes Playwright code, the probe never generates, the translator never opens
-a browser, the writer never verdicts, the reviewer never edits, the runner never fixes). Per-role reasoning `effort` is
+drafter never writes Playwright code, the probe never generates and never drives the live app unless asked, the translator never
+opens a browser, the writer never verdicts, the reviewer never edits, the runner never fixes). Per-role reasoning `effort` is
 pinned in frontmatter for a reason ([`DESIGN.md`](DESIGN.md)); change it only with a
 clear rationale.
 
