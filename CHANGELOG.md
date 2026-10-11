@@ -57,7 +57,8 @@ also surfaced these, fixed before release:
   `name`, and the locator map gains `source_type: strategy`, so a marker reads
   `// carried: By.id("name")`.
 - **Batch-level reports** from an agent run on several test cases are saved once, at
-  `reports/<stage>-round-<n>.json`.
+  `reports/batch-<b>/<stage>-round-<n>.json`, numbered per `/migrate` run so a second batch in
+  the same migration dir doesn't overwrite the first's.
 - **The writer no longer replaces an existing config.** On a near-empty framework root, a
   `**/*` glob was filled up by `node_modules`, so the writer never saw `playwright.config.ts`.
   It overwrote the file, dropping `testIdAttribute`, and reported it as `created`. The writer
@@ -67,7 +68,10 @@ also surfaced these, fixed before release:
 - **`/migrate` re-runs done tests whose files changed.** A round-2 writer replaced a carried
   locator in a page object that an already-passed test also uses. Before the summary, specs
   whose shared files changed after they passed are run once together
-  (`reports/run-final.json`).
+  (`reports/batch-<b>/run-final.json`).
+- **`/migrate` asks before a destructive run.** Before the first run of a spec whose contract
+  has a `destructive` step, it says what the run will change on the real app and waits for a
+  go-ahead. Read-only specs run without asking.
 
 ## [0.5.0] — 2026-10-10
 

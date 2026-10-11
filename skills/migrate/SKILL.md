@@ -52,8 +52,10 @@ reports, maps, and the cache line up across rounds:
 - `reports/<testcase>/`: every agent's JSON for that test case, written by you as
   `<stage>-round-<n>.json`. An agent you run on several test cases at once (the planner, or a
   batched drafter, translator, probe, writer, or reviewer) writes one report for the batch:
-  save it once, at `reports/<stage>-round-<n>.json`, and save the runner's reports per test
-  case as above.
+  save it once, at `reports/batch-<b>/<stage>-round-<n>.json`, and save the runner's reports
+  per test case as above. `<b>` counts the `/migrate` invocations in this migration dir: one
+  more than the highest existing `reports/batch-<b>/`, so a later batch never overwrites an
+  earlier batch's reports.
 - `runs/<testcase>/round-<n>/`: the runner's run output directory for that round. The runner
   creates one `attempt-<k>/` folder inside it per Playwright invocation, so every run's report,
   log, and traces are kept side by side and nothing is overwritten.
@@ -208,9 +210,9 @@ and none of those gets better with a fourth pass at the spec.
 **Re-run done tests whose files changed.** A test case is proven only against the files it ran
 with. If a later writer manifest modified a file a done test case's spec uses (a shared page
 object, fixture, data module, or the config), that test case is no longer proven. Before the
-summary, spawn the runner once over all such specs together, with `runs/final/` as the run
-output directory, and save its report as `reports/run-final.json`. Index its attempts like any
-other run, with `"testcase": "final"`. A failure here goes in the summary with its route; it
+summary, spawn the runner once over all such specs together, with `runs/batch-<b>-final/` as
+the run output directory, and save its report as `reports/batch-<b>/run-final.json`. Index its
+attempts like any other run, with `"testcase": "batch-<b>-final"`. A failure here goes in the summary with its route; it
 does not start another round.
 
 When every test case is done or stopped, give the user one summary:
@@ -235,6 +237,10 @@ When every test case is done or stopped, give the user one summary:
 - **Keep the migration dir out of version control.** The runner redacts what it reports, but
   Playwright writes its raw report, log, traces, and screenshots under `runs/` unredacted.
   Add the migration dir to `.gitignore` before the first run.
+- **Ask before a destructive run.** The runner runs against the real app. Before the first run
+  of a spec whose contract has a `destructive` step (it creates, posts, pays for, or deletes
+  something), tell the user what it will change and wait for their go-ahead. Read-only specs
+  run without asking.
 - **Stop means stop.** When a gate stops a test case, tell the user why and what would let it
   continue. Don't relax a threshold or skip a stage to get to green.
 
